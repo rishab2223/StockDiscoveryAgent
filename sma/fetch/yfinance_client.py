@@ -1,0 +1,167 @@
+from __future__ import annotations
+
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any
+
+import numpy as np
+import pandas as pd
+import yfinance as yf
+
+from sma.config import FUNDAMENTAL_WORKERS, HISTORY_PERIOD, TRADING_DAYS_1M, TRADING_DAYS_1W
+
+
+def _series_close(hist: pd.DataFrame, ticker: str) -> pd.Series:
+    if hist is None or hist.empty:
+        return pd.Series(dtype=float)
+    if isinstance(hist.columns, pd.MultiIndex):
+        level0 = hist.columns.get_level_values(0)
+        if ticker in level0:
+            close = hist[ticker]["Close"]
+        elif "Close" in level0:
+            close = hist["Close"][ticker]
+        else:
+            return pd.Series(dtype=float)
+    else:
+        if "Close" not in hist.columns:
+            return pd.Series(dtype=float)
+        close = hist["Close"]
+    return pd.to_numeric(close, errors="coerce").dropna()
+
+
+def _pct_change(closes: pd.Series, lookback: int) -> float | None:
+    if len(closes) < lookback + 1:
+        return None
+    last = float(closes.iloc[-1])
+    prior = float(closes.iloc[-(lookback + 1)])
+    if prior == 0:
+        return None
+    return (last - prior) / prior
+
+
+def download_history(tickers: list[str]) -> pd.DataFrame:
+    if not tickers:
+        return pd.DataFrame()
+    return yf.download(
+        tickers=tickers,
+        period=HISTORY_PERIOD,
+        interval="1d",
+        group_by="ticker",
+        auto_adjust=True,
+        threads=True,
+        progress=False,
+    )
+
+
+def price_snapshot(hist: pd.DataFrame, ticker: str) -> dict[str, Any]:
+    closes = _series_close(hist, ticker)
+    last = float(closes.iloc[-1]) if len(closes) else None
+    last_date = str(closes.index[-1].date()) if len(closes) else None
+    return {
+        "price": last,
+        "price_as_of": last_date,
+        "pct_1w": _pct_change(closes, TRADING_DAYS_1W),
+        "pct_1m": _pct_change(closes, TRADING_DAYS_1M),
+        "close_5d_ago": float(closes.iloc[-(TRADING_DAYS_1W + 1)])
+        if len(closes) >= TRADING_DAYS_1W + 1
+        else None,
+        "close_21d_ago": float(closes.iloc[-(TRADING_DAYS_1M + 1)])
+        if len(closes) >= TRADING_DAYS_1M + 1
+        else None,
+    }
+
+
+def _row_history(frame: pd.DataFrame | None, row_names: tuple[str, ...]) -> list[float]:
+    if frame is None or frame.empty:
+        return []
+    idx = {str(i).strip().lower(): i for i in frame.index}
+    for name in row_names:
+        key = name.lower()
+        if key in idx:
+            values = pd.to_numeric(frame.loc[idx[key]], errors="coerce").dropna().tolist()
+            return [float(v) for v in values]
+    return []
+
+
+def _safe_float(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        number = float(value)
+        if np.isnan(number) or np.isinf(number):
+            return None
+        return number
+    except (TypeError, ValueError):
+        return None
+
+
+def fetch_fundamentals(ticker: str, wiki_sector: str | None = None) -> dict[str, Any]:
+    stock = yf.Ticker(ticker)
+    info: dict[str, Any] = {}
+    try:
+        info = stock.info or {}
+    except Exception:
+        info = {}
+
+    financials = None
+    cashflow = None
+    try:
+        financials = stock.financials
+    except Exception:
+        pass
+    try:
+        cashflow = stock.cashflow
+    except Exception:
+        pass
+
+    net_income = _row_history(financials, ("Net Income", "Net Income Common Stockholders"))
+    ebit = _row_history(financials, ("EBIT", "Operating Income"))
+    revenue = _row_history(financials, ("Total Revenue", "Operating Revenue"))
+    fcf = _row_history(cashflow, ("Free Cash Flow",))
+
+    sector = info.get("sector") or wiki_sector or "Unknown"
+    return {
+        "name": info.get("shortName") or info.get("longName") or ticker,
+        "sector": sector,
+        "market_cap": _safe_float(info.get("marketCap")),
+        "enterprise_value": _safe_float(info.get("enterpriseValue")),
+        "pe": _safe_float(info.get("trailingPE")),
+        "forward_pe": _safe_float(info.get("forwardPE")),
+        "ps": _safe_float(info.get("priceToSalesTrailing12Months")),
+        "pb": _safe_float(info.get("priceToBook")),
+        "peg": _safe_float(info.get("pegRatio")),
+        "gross_margin": _safe_float(info.get("grossMargins")),
+        "operating_margin": _safe_float(info.get("operatingMargins")),
+        "profit_margin": _safe_float(info.get("profitMargins")),
+        "roe": _safe_float(info.get("returnOnEquity")),
+        "free_cashflow_ttm": _safe_float(info.get("freeCashflow")),
+        "net_income_annual": net_income,
+        "ebit_annual": ebit,
+        "revenue_annual": revenue,
+        "fcf_annual": fcf,
+        "shares": _safe_float(info.get("sharesOutstanding")),
+    }
+
+
+def fetch_fundamentals_many(
+    tickers: list[str],
+    sectors: dict[str, str],
+    workers: int = FUNDAMENTAL_WORKERS,
+) -> tuple[dict[str, dict[str, Any]], list[dict[str, str]]]:
+    results: dict[str, dict[str, Any]] = {}
+    errors: list[dict[str, str]] = []
+
+    def _one(symbol: str) -> tuple[str, dict[str, Any] | None, str | None]:
+        try:
+            return symbol, fetch_fundamentals(symbol, sectors.get(symbol)), None
+        except Exception as exc:
+            return symbol, None, str(exc)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(_one, ticker) for ticker in tickers]
+        for future in as_completed(futures):
+            symbol, payload, error = future.result()
+            if error or payload is None:
+                errors.append({"ticker": symbol, "error": error or "unknown"})
+            else:
+                results[symbol] = payload
+    return results, errors
