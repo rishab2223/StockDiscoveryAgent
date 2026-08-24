@@ -4,7 +4,7 @@ import csv
 from pathlib import Path
 from typing import Any
 
-from sma.screen.scorer import EXPORT_FIELDS, slim
+from sda.screen.scorer import EXPORT_FIELDS, slim
 
 
 def write_screen_csv(path: Path, lists: dict[str, list[dict[str, Any]]]) -> Path:

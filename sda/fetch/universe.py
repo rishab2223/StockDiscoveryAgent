@@ -9,7 +9,7 @@ WIKI_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
 DATASETS_CSV = (
     "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/master/data/constituents.csv"
 )
-USER_AGENT = "stockMarketAnalysisAgent/0.1 (personal research)"
+USER_AGENT = "StockDiscoveryAgent/0.1 (personal research)"
 
 
 def _read_url(url: str) -> str:

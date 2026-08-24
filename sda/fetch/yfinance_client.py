@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
-from sma.config import FUNDAMENTAL_WORKERS, HISTORY_PERIOD, TRADING_DAYS_1M, TRADING_DAYS_1W
+from sda.config import FUNDAMENTAL_WORKERS, HISTORY_PERIOD, TRADING_DAYS_1M, TRADING_DAYS_1W
 
 
 def _series_close(hist: pd.DataFrame, ticker: str) -> pd.Series:

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from langchain_core.tools import tool
 
-from sma.fetch.agent import fetch_market_data
-from sma.news.agent import analyze_news
-from sma.screen.agent import run_screen
-from sma.verdict.agent import write_verdicts
+from sda.fetch.agent import fetch_market_data
+from sda.news.agent import analyze_news
+from sda.screen.agent import run_screen
+from sda.verdict.agent import write_verdicts
 
 
 @tool

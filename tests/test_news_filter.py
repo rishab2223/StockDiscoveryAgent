@@ -1,4 +1,4 @@
-from sma.news.filter import classify_rule, filter_news, mentions_company
+from sda.news.filter import classify_rule, filter_news, mentions_company
 
 
 def test_drops_analyst_and_keeps_earnings():

@@ -4,7 +4,7 @@ from collections import defaultdict
 from statistics import median
 from typing import Any
 
-from sma.screen.metrics import enrich_record
+from sda.screen.metrics import enrich_record
 
 
 def _finite(value: Any) -> bool:

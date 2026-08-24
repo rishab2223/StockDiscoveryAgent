@@ -5,7 +5,7 @@ from typing import Any
 
 import yfinance as yf
 
-from sma.config import NEWS_LOOKBACK_DAYS
+from sda.config import NEWS_LOOKBACK_DAYS
 
 
 def _published_at(item: dict[str, Any]) -> datetime | None:

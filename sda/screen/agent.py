@@ -4,11 +4,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sma.config import CACHE_DIR, SCREEN_N, ensure_dirs
-from sma.io_util import latest_file, read_json, write_json
-from sma.run_dir import file_in_run, resolve_run_dir
-from sma.screen.scorer import score_universe, slim, top_n
-from sma.screen.writer import write_screen_csv, write_screen_markdown
+from sda.config import CACHE_DIR, SCREEN_N, ensure_dirs
+from sda.io_util import latest_file, read_json, write_json
+from sda.run_dir import file_in_run, resolve_run_dir
+from sda.screen.scorer import score_universe, slim, top_n
+from sda.screen.writer import write_screen_csv, write_screen_markdown
 
 
 def _load_cache(cache_path: str | None, run_dir: Path | None) -> dict[str, Any]:
@@ -19,7 +19,7 @@ def _load_cache(cache_path: str | None, run_dir: Path | None) -> dict[str, Any]:
     else:
         path = latest_file(CACHE_DIR, "market_", ".json")
         if path is None:
-            raise FileNotFoundError("No market cache found. Run `python -m sma fetch` first.")
+            raise FileNotFoundError("No market cache found. Run `python -m sda fetch` first.")
     return read_json(path)
 
 

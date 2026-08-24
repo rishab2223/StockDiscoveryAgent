@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sma.config import OUTPUT_DIR, ensure_dirs
+from sda.config import OUTPUT_DIR, ensure_dirs
 
 
 def new_run_dir() -> Path:
@@ -44,7 +44,7 @@ def resolve_run_dir(
         return latest
     if create:
         return new_run_dir()
-    raise FileNotFoundError("No run folder found. Run `python -m sma fetch` or `python -m sma run` first.")
+    raise FileNotFoundError("No run folder found. Run `python -m sda fetch` or `python -m sda run` first.")
 
 
 def file_in_run(run_dir: Path, name: str) -> Path | None:

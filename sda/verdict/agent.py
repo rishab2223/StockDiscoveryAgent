@@ -4,10 +4,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sma.config import OUTPUT_DIR, ensure_dirs
-from sma.io_util import latest_file, read_json, write_json
-from sma.run_dir import file_in_run, resolve_run_dir
-from sma.verdict.chain import run_verdicts
+from sda.config import OUTPUT_DIR, ensure_dirs
+from sda.io_util import latest_file, read_json, write_json
+from sda.run_dir import file_in_run, resolve_run_dir
+from sda.verdict.chain import run_verdicts
 
 
 def _index_screen(screen: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -57,7 +57,7 @@ def write_verdicts(
     if news_file is None:
         news_file = latest_file(OUTPUT_DIR, "news_clean_", ".json")
     if news_file is None:
-        raise FileNotFoundError("No cleaned news JSON found. Run `python -m sma news` first.")
+        raise FileNotFoundError("No cleaned news JSON found. Run `python -m sda news` first.")
     news_payload = read_json(news_file)
 
     screen_file = Path(screen_path) if screen_path else file_in_run(folder, "screen.json")

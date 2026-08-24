@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from sma.config import OPENAI_MODEL
+from sda.config import OPENAI_MODEL
 
 
 class TickerVerdict(BaseModel):

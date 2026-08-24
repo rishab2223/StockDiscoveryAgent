@@ -1,5 +1,5 @@
-from sma.screen.metrics import enrich_record, simple_dcf
-from sma.screen.scorer import score_universe, top_n
+from sda.screen.metrics import enrich_record, simple_dcf
+from sda.screen.scorer import score_universe, top_n
 
 
 def test_value_trap_and_dcf():

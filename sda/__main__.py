@@ -1,4 +1,4 @@
-from sma.cli import main
+from sda.cli import main
 
 if __name__ == "__main__":
     raise SystemExit(main())

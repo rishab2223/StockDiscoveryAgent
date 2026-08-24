@@ -3,7 +3,7 @@ from __future__ import annotations
 from statistics import pstdev
 from typing import Any
 
-from sma.config import DcfAssumptions, VALUE_TRAP_YOY
+from sda.config import DcfAssumptions, VALUE_TRAP_YOY
 
 
 def _growth(current: float | None, prior: float | None) -> float | None:

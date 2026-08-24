@@ -4,13 +4,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sma.config import NEWS_LOOKBACK_DAYS, OUTPUT_DIR, ensure_dirs
-from sma.io_util import latest_file, read_json, write_json
-from sma.run_dir import file_in_run, resolve_run_dir
-from sma.news.classifier import classify_ambiguous
-from sma.news.documents import news_to_documents
-from sma.news.fetch import fetch_ticker_news
-from sma.news.filter import filter_news, mentions_company
+from sda.config import NEWS_LOOKBACK_DAYS, OUTPUT_DIR, ensure_dirs
+from sda.io_util import latest_file, read_json, write_json
+from sda.run_dir import file_in_run, resolve_run_dir
+from sda.news.classifier import classify_ambiguous
+from sda.news.documents import news_to_documents
+from sda.news.fetch import fetch_ticker_news
+from sda.news.filter import filter_news, mentions_company
 
 
 def unique_screen_tickers(screen: dict[str, Any]) -> dict[str, list[str]]:
@@ -33,7 +33,7 @@ def _load_screen(screen_path: str | None, run_dir: Path | None) -> dict[str, Any
         return read_json(run_dir / "screen.json")
     found = latest_file(OUTPUT_DIR, "screen_", ".json")
     if found is None:
-        raise FileNotFoundError("No screen JSON found. Run `python -m sma screen` first.")
+        raise FileNotFoundError("No screen JSON found. Run `python -m sda screen` first.")
     return read_json(found)
 
 

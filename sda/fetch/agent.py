@@ -4,10 +4,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sma.fetch.universe import load_sp500
-from sma.fetch.yfinance_client import download_history, fetch_fundamentals_many, price_snapshot
-from sma.io_util import write_json
-from sma.run_dir import new_run_dir
+from sda.fetch.universe import load_sp500
+from sda.fetch.yfinance_client import download_history, fetch_fundamentals_many, price_snapshot
+from sda.io_util import write_json
+from sda.run_dir import new_run_dir
 
 
 def fetch_market_data(

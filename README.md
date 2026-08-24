@@ -1,6 +1,8 @@
-# Stock Market Analysis Agent
+# Stock Discovery Agent
 
 Personal research pipeline for US S&P 500 names: fetch Yahoo Finance data, rank undervalued / overvalued / large movers, filter company news, and write GPT verdicts into a dated run folder.
+
+GitHub: [rishab2223/StockDiscoveryAgent](https://github.com/rishab2223/StockDiscoveryAgent)
 
 This is **not** investment advice. Valuation is a local model, not a vendor “fair value.” Quotes from Yahoo are delayed.
 
@@ -15,7 +17,7 @@ This is **not** investment advice. Valuation is a local model, not a vendor “f
 3. **News** — Yahoo headlines for the shortlist only. Regex drops analyst recs and opinion; leftovers are dropped unless `SMA_LLM_NEWS_CLASSIFIER=1`.
 4. **Verdict** — OpenAI writes a free-form conclusion per unique ticker from screen metrics + cleaned news.
 
-LangGraph runs those four steps in order (`python -m sma run`). Fetch and screen do not use an LLM.
+LangGraph runs those four steps in order (`python -m sda run`). Fetch and screen do not use an LLM.
 
 ## Setup
 
@@ -36,19 +38,19 @@ OPENAI_MODEL=gpt-4o-mini
 SMA_LLM_NEWS_CLASSIFIER=0
 ```
 
-`SMA_LLM_NEWS_CLASSIFIER=1` sends only **maybe** headlines to GPT for keep/drop. Verdicts always need the API key.
+`SMA_LLM_NEWS_CLASSIFIER=1` sends only **maybe** headlines to GPT for keep/drop. Verdicts always need the API key. The env var name is unchanged so existing `.env` files keep working.
 
 ## Commands
 
 ```text
-python -m sma fetch                 # S&P 500 → new run folder / market.json
-python -m sma fetch --limit 25      # plumbing test only; sector medians will be weak
-python -m sma screen --n 20
-python -m sma news
-python -m sma verdict
+python -m sda fetch                 # S&P 500 → new run folder / market.json
+python -m sda fetch --limit 25      # plumbing test only; sector medians will be weak
+python -m sda screen --n 20
+python -m sda news
+python -m sda verdict
 
-python -m sma run --n 20            # full graph: fetch → screen → news → verdict
-python -m sma run --n 5 --limit 25  # small test
+python -m sda run --n 20            # full graph: fetch → screen → news → verdict
+python -m sda run --n 5 --limit 25  # small test
 ```
 
 `--n` is names **per list**, not unique tickers. `--n 20` is four lists of 20 (the “80 stock” shortlist, with overlap).
@@ -69,13 +71,13 @@ Each run writes to `output/<UTC-timestamp>/` so runs do not overwrite each other
 ## Layout
 
 ```text
-sma/
+sda/
   fetch/     yfinance + S&P 500 universe
   screen/    metrics, composite scores, writers
   news/      Yahoo news, keyword filter, optional classifier
   verdict/   LangChain + OpenAI verdict chain
   graph/     LangGraph wiring
-  cli.py     python -m sma ...
+  cli.py     python -m sda ...
 tests/       scoring and news-filter unit tests
 ```
 

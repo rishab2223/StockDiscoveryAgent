@@ -4,13 +4,13 @@ from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
-from sma.config import SCREEN_N
-from sma.fetch.agent import fetch_market_data
-from sma.graph.state import PipelineState
-from sma.news.agent import analyze_news
-from sma.run_dir import new_run_dir
-from sma.screen.agent import run_screen
-from sma.verdict.agent import write_verdicts
+from sda.config import SCREEN_N
+from sda.fetch.agent import fetch_market_data
+from sda.graph.state import PipelineState
+from sda.news.agent import analyze_news
+from sda.run_dir import new_run_dir
+from sda.screen.agent import run_screen
+from sda.verdict.agent import write_verdicts
 
 
 def fetch_node(state: PipelineState) -> dict[str, Any]:

@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from sma.config import LLM_NEWS_CLASSIFIER, OPENAI_MODEL
+from sda.config import LLM_NEWS_CLASSIFIER, OPENAI_MODEL
 
 
 class NewsDecision(BaseModel):
