@@ -21,6 +21,8 @@ VALUE_TRAP_YOY = -0.25
 NEWS_LOOKBACK_DAYS = 7
 NEWS_COUNT = 25
 FUNDAMENTAL_WORKERS = 8
+# Yahoo answers throttled .info calls with an empty dict; retry this many times.
+INFO_RETRIES = 2
 
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 LLM_NEWS_CLASSIFIER = os.getenv("SMA_LLM_NEWS_CLASSIFIER", "0").lower() in {

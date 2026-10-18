@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
@@ -7,7 +8,7 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
-from sda.config import FUNDAMENTAL_WORKERS, HISTORY_PERIOD, TRADING_DAYS_1M, TRADING_DAYS_1W
+from sda.config import FUNDAMENTAL_WORKERS, HISTORY_PERIOD, INFO_RETRIES, TRADING_DAYS_1M, TRADING_DAYS_1W
 from sda.sectors import normalize_sector
 
 
@@ -66,6 +67,7 @@ def price_snapshot(hist: pd.DataFrame, ticker: str) -> dict[str, Any]:
 
 
 def _row_history(frame: pd.DataFrame | None, row_names: tuple[str, ...]) -> list[float]:
+    """Annual values for the first matching statement row, newest first."""
     if frame is None or frame.empty:
         return []
     idx = {str(i).strip().lower(): i for i in frame.index}
@@ -89,32 +91,37 @@ def _safe_float(value: Any) -> float | None:
         return None
 
 
+def _statement(stock: yf.Ticker, attr: str) -> pd.DataFrame | None:
+    try:
+        return getattr(stock, attr)
+    except Exception:
+        return None
+
+
+def _info_with_retry(stock: yf.Ticker, retries: int) -> dict[str, Any]:
+    """Yahoo answers throttled .info requests with an empty dict rather than an error."""
+    info: dict[str, Any] = {}
+    for attempt in range(retries + 1):
+        try:
+            info = stock.info or {}
+        except Exception:
+            info = {}
+        if info.get("marketCap") or info.get("trailingPE") or info.get("sharesOutstanding"):
+            return info
+        if attempt < retries:
+            time.sleep(1.0 + attempt)
+    return info
+
+
 def fetch_fundamentals(ticker: str, sector: str | None = None) -> dict[str, Any]:
     """One ticker: Yahoo .info plus annual income-statement and cash-flow rows.
 
-    `sector` is the GICS label from the index list and wins over Yahoo's own taxonomy."""
+    `sector` is the GICS label from the index list and wins over Yahoo's own
+    taxonomy; `info_missing` tells the caller the reply was throttled."""
     stock = yf.Ticker(ticker)
-    info: dict[str, Any] = {}
-    try:
-        info = stock.info or {}
-    except Exception:
-        info = {}
-
-    financials = None
-    cashflow = None
-    try:
-        financials = stock.financials
-    except Exception:
-        pass
-    try:
-        cashflow = stock.cashflow
-    except Exception:
-        pass
-
-    net_income = _row_history(financials, ("Net Income", "Net Income Common Stockholders"))
-    ebit = _row_history(financials, ("EBIT", "Operating Income"))
-    revenue = _row_history(financials, ("Total Revenue", "Operating Revenue"))
-    fcf = _row_history(cashflow, ("Free Cash Flow",))
+    info = _info_with_retry(stock, INFO_RETRIES)
+    financials = _statement(stock, "financials")
+    cashflow = _statement(stock, "cashflow")
 
     return {
         "name": info.get("shortName") or info.get("longName") or ticker,
@@ -131,11 +138,12 @@ def fetch_fundamentals(ticker: str, sector: str | None = None) -> dict[str, Any]
         "profit_margin": _safe_float(info.get("profitMargins")),
         "roe": _safe_float(info.get("returnOnEquity")),
         "free_cashflow_ttm": _safe_float(info.get("freeCashflow")),
-        "net_income_annual": net_income,
-        "ebit_annual": ebit,
-        "revenue_annual": revenue,
-        "fcf_annual": fcf,
+        "net_income_annual": _row_history(financials, ("Net Income", "Net Income Common Stockholders")),
+        "ebit_annual": _row_history(financials, ("EBIT", "Operating Income")),
+        "revenue_annual": _row_history(financials, ("Total Revenue", "Operating Revenue")),
+        "fcf_annual": _row_history(cashflow, ("Free Cash Flow",)),
         "shares": _safe_float(info.get("sharesOutstanding")),
+        "info_missing": not info,
     }
 
 
@@ -157,8 +165,11 @@ def fetch_fundamentals_many(
         futures = [pool.submit(_one, ticker) for ticker in tickers]
         for future in as_completed(futures):
             symbol, payload, error = future.result()
-            if error or payload is None:
+            if payload is None:
                 errors.append({"ticker": symbol, "error": error or "unknown"})
-            else:
-                results[symbol] = payload
+                continue
+            if payload.pop("info_missing"):
+                # Keep the partial record so prices still rank movers, but report it.
+                errors.append({"ticker": symbol, "error": "Yahoo .info empty after retries; fundamentals partial"})
+            results[symbol] = payload
     return results, errors
