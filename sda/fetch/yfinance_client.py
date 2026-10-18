@@ -8,6 +8,7 @@ import pandas as pd
 import yfinance as yf
 
 from sda.config import FUNDAMENTAL_WORKERS, HISTORY_PERIOD, TRADING_DAYS_1M, TRADING_DAYS_1W
+from sda.sectors import normalize_sector
 
 
 def _series_close(hist: pd.DataFrame, ticker: str) -> pd.Series:
@@ -88,7 +89,10 @@ def _safe_float(value: Any) -> float | None:
         return None
 
 
-def fetch_fundamentals(ticker: str, wiki_sector: str | None = None) -> dict[str, Any]:
+def fetch_fundamentals(ticker: str, sector: str | None = None) -> dict[str, Any]:
+    """One ticker: Yahoo .info plus annual income-statement and cash-flow rows.
+
+    `sector` is the GICS label from the index list and wins over Yahoo's own taxonomy."""
     stock = yf.Ticker(ticker)
     info: dict[str, Any] = {}
     try:
@@ -112,10 +116,9 @@ def fetch_fundamentals(ticker: str, wiki_sector: str | None = None) -> dict[str,
     revenue = _row_history(financials, ("Total Revenue", "Operating Revenue"))
     fcf = _row_history(cashflow, ("Free Cash Flow",))
 
-    sector = info.get("sector") or wiki_sector or "Unknown"
     return {
         "name": info.get("shortName") or info.get("longName") or ticker,
-        "sector": sector,
+        "sector": sector or normalize_sector(info.get("sector")),
         "market_cap": _safe_float(info.get("marketCap")),
         "enterprise_value": _safe_float(info.get("enterpriseValue")),
         "pe": _safe_float(info.get("trailingPE")),

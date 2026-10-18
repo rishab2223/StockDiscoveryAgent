@@ -8,6 +8,7 @@ from sda.fetch.universe import load_sp500
 from sda.fetch.yfinance_client import download_history, fetch_fundamentals_many, price_snapshot
 from sda.io_util import write_json
 from sda.run_dir import new_run_dir
+from sda.sectors import normalize_sector
 
 
 def fetch_market_data(
@@ -23,15 +24,15 @@ def fetch_market_data(
 
     universe_rows = []
     if tickers:
-        universe_rows = [{"symbol": t.upper(), "sector": "Unknown", "name": t.upper()} for t in tickers]
+        universe_rows = [{"symbol": t.upper(), "sector": None, "name": None} for t in tickers]
     else:
         universe_rows = load_sp500()
         if limit:
             universe_rows = universe_rows[:limit]
 
     symbols = [row["symbol"] for row in universe_rows]
-    wiki_sectors = {row["symbol"]: row["sector"] for row in universe_rows}
-    wiki_names = {row["symbol"]: row["name"] for row in universe_rows}
+    wiki_sectors = {row["symbol"]: row["sector"] for row in universe_rows if row["sector"]}
+    wiki_names = {row["symbol"]: row["name"] for row in universe_rows if row["name"]}
 
     history = download_history(symbols)
     fundamentals, errors = fetch_fundamentals_many(symbols, wiki_sectors)
@@ -46,8 +47,8 @@ def fetch_market_data(
         records[symbol] = {
             **snapshot,
             **fund,
-            "name": fund.get("name") or wiki_names.get(symbol, symbol),
-            "sector": fund.get("sector") or wiki_sectors.get(symbol, "Unknown"),
+            "name": fund.get("name") or wiki_names.get(symbol) or symbol,
+            "sector": normalize_sector(fund.get("sector") or wiki_sectors.get(symbol)),
         }
 
     path = Path(cache_path) if cache_path else folder / "market.json"

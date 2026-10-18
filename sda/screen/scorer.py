@@ -5,6 +5,7 @@ from statistics import median
 from typing import Any
 
 from sda.screen.metrics import enrich_record
+from sda.sectors import normalize_sector
 
 
 def _finite(value: Any) -> bool:
@@ -100,7 +101,11 @@ def overvalued_score(rec: dict[str, Any]) -> float | None:
 
 
 def score_universe(raw_tickers: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    enriched = {t: enrich_record(dict(rec, ticker=t)) for t, rec in raw_tickers.items()}
+    # Sector is normalised here too so market.json files from older runs screen correctly.
+    enriched = {
+        t: enrich_record({**rec, "ticker": t, "sector": normalize_sector(rec.get("sector"))})
+        for t, rec in raw_tickers.items()
+    }
     relative = attach_sector_relatives(enriched)
     for rec in relative.values():
         rec["undervalued_score"] = undervalued_score(rec)
