@@ -9,8 +9,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 ROOT = Path(__file__).resolve().parents[1]
-CACHE_DIR = ROOT / "data" / "cache"
-OUTPUT_DIR = ROOT / "output"
+# Both can be moved with env vars (handy for tests and for keeping runs on another drive).
+OUTPUT_DIR = Path(os.getenv("SDA_OUTPUT_DIR", ROOT / "output"))
+CACHE_DIR = Path(os.getenv("SDA_CACHE_DIR", ROOT / "data" / "cache"))
 
 SCREEN_N = 20
 HISTORY_PERIOD = "6mo"
