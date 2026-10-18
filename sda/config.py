@@ -17,25 +17,25 @@ SCREEN_N = 20
 HISTORY_PERIOD = "6mo"
 TRADING_DAYS_1W = 5
 TRADING_DAYS_1M = 21
-
 VALUE_TRAP_YOY = -0.25
-NEWS_LOOKBACK_DAYS = 7
-NEWS_COUNT = 25
-NEWS_WORKERS = 8
+
+# Fetch. Yahoo throttles at full-index scale: retry empty .info replies and reuse
+# recent per-ticker fundamentals so a rerun on the same day skips ~500 slow calls.
 FUNDAMENTAL_WORKERS = 8
-# Yahoo answers throttled .info calls with an empty dict; retry this many times.
 INFO_RETRIES = 2
-# Reuse per-ticker fundamentals and the S&P 500 list so same-day reruns skip ~500 slow calls.
 FUNDAMENTALS_TTL_HOURS = 24
 UNIVERSE_TTL_DAYS = 7
 
+# News
+NEWS_LOOKBACK_DAYS = 7
+NEWS_COUNT = 25
+NEWS_WORKERS = 8
+
+# LLM
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 LLM_CONCURRENCY = 8
-LLM_NEWS_CLASSIFIER = os.getenv("SMA_LLM_NEWS_CLASSIFIER", "0").lower() in {
-    "1",
-    "true",
-    "yes",
-}
+# Env var name kept from the first release so existing .env files keep working.
+LLM_NEWS_CLASSIFIER = os.getenv("SMA_LLM_NEWS_CLASSIFIER", "0").lower() in {"1", "true", "yes"}
 
 
 @dataclass(frozen=True)
