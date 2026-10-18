@@ -57,6 +57,11 @@ def _publisher(item: dict[str, Any]) -> str:
     return str(item.get("publisher") or provider.get("displayName") or "Yahoo")
 
 
+def _related_tickers(item: dict[str, Any]) -> list[str]:
+    related = item.get("relatedTickers") or _content(item).get("relatedTickers") or []
+    return [str(t).upper() for t in related if t]
+
+
 def normalize_item(item: dict[str, Any], ticker: str) -> dict[str, Any] | None:
     """One flat record from either Yahoo news shape; None when there is no headline."""
     title = _headline(item)
@@ -70,6 +75,7 @@ def normalize_item(item: dict[str, Any], ticker: str) -> dict[str, Any] | None:
         "url": _url(item),
         "publisher": _publisher(item),
         "published_at": published.isoformat() if published else None,
+        "related_tickers": _related_tickers(item),
     }
 
 

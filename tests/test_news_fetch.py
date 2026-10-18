@@ -20,11 +20,13 @@ def test_normalize_flat_search_shape():
         "publisher": "Reuters",
         "link": "https://x/y",
         "providerPublishTime": 1_700_000_000,
+        "relatedTickers": ["acme", "OTHER"],
     }
     doc = normalize_item(item, "ACME")
     assert doc["ticker"] == "ACME" and doc["title"] == "Acme wins contract"
     assert doc["url"] == "https://x/y" and doc["publisher"] == "Reuters"
     assert doc["published_at"] == "2023-11-14T22:13:20+00:00"
+    assert doc["related_tickers"] == ["ACME", "OTHER"]
     assert doc["summary"] == ""
 
 

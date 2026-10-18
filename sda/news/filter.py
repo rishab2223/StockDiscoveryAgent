@@ -93,18 +93,34 @@ KEEP_PATTERNS = [
 DROP_RE = [re.compile(p, re.I) for p in DROP_PATTERNS]
 KEEP_RE = [re.compile(p, re.I) for p in KEEP_PATTERNS]
 
+# Generic words that appear in most company names and would match any story.
+_NAME_STOPWORDS = {"inc", "corp", "corporation", "company", "holdings", "the", "and", "class", "plc", "group"}
+
 
 def _blob(item: dict[str, Any]) -> str:
     return f"{item.get('title') or ''} {item.get('summary') or ''} {item.get('publisher') or ''}"
 
 
+def _ticker_pattern(ticker: str) -> re.Pattern[str]:
+    """Case-sensitive symbol match so ALL, CAT or F do not match ordinary words.
+    One- and two-letter symbols must appear as a cashtag or in parentheses."""
+    symbol = re.escape(ticker)
+    if len(ticker) <= 2:
+        return re.compile(rf"(\${symbol}\b|\({symbol}\))")
+    return re.compile(rf"(?<![A-Za-z0-9]){symbol}(?![A-Za-z0-9])")
+
+
 def mentions_company(item: dict[str, Any], ticker: str, name: str | None = None) -> bool:
-    text = _blob(item).lower()
-    if ticker.lower() in text:
+    """Is the story about this company? Yahoo's relatedTickers decides when present;
+    otherwise the symbol or a distinctive word of the company name must appear."""
+    related = item.get("related_tickers")
+    if related:
+        return ticker.upper() in {str(r).upper() for r in related}
+    text = _blob(item)
+    if _ticker_pattern(ticker).search(text):
         return True
-    skip = {"inc", "corp", "corporation", "company", "holdings", "the", "and", "class", "plc"}
-    tokens = [tok for tok in re.findall(r"[a-z]{3,}", (name or "").lower()) if tok not in skip]
-    return any(tok in text for tok in tokens[:3])
+    tokens = [tok for tok in re.findall(r"[a-z]{3,}", (name or "").lower()) if tok not in _NAME_STOPWORDS]
+    return any(re.search(rf"\b{re.escape(tok)}\b", text, re.I) for tok in tokens[:3])
 
 
 def classify_rule(item: dict[str, Any]) -> str:
@@ -114,24 +130,20 @@ def classify_rule(item: dict[str, Any]) -> str:
     text = _blob(item)
     drop_hit = any(rx.search(text) for rx in DROP_RE)
     keep_hit = any(rx.search(text) for rx in KEEP_RE)
-    if drop_hit and not keep_hit:
-        return "drop"
-    if keep_hit and not drop_hit:
-        return "keep"
-    if keep_hit and drop_hit:
+    if drop_hit == keep_hit:  # neither pattern set fired, or both did
         return "maybe"
-    return "maybe"
+    return "drop" if drop_hit else "keep"
 
 
 def filter_news(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
-    buckets = {"keep": [], "drop": [], "maybe": []}
-    seen: set[str] = set()
+    """Dedupe by (ticker, title) and split into keep / drop / maybe."""
+    buckets: dict[str, list[dict[str, Any]]] = {"keep": [], "drop": [], "maybe": []}
+    seen: set[tuple[Any, str]] = set()
     for item in items:
         key = (item.get("ticker"), (item.get("title") or "").lower().strip())
         if key in seen:
             continue
         seen.add(key)
         label = classify_rule(item)
-        tagged = {**item, "rule_label": label}
-        buckets[label].append(tagged)
+        buckets[label].append({**item, "rule_label": label})
     return buckets
