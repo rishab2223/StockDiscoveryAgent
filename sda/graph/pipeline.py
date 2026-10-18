@@ -8,13 +8,13 @@ from sda.config import SCREEN_N
 from sda.fetch.agent import fetch_market_data
 from sda.graph.state import PipelineState
 from sda.news.agent import analyze_news
-from sda.run_dir import new_run_dir
+from sda.run_dir import latest_run_with, new_run_dir
 from sda.screen.agent import run_screen
 from sda.verdict.agent import write_verdicts
 
 
 def fetch_node(state: PipelineState) -> dict[str, Any]:
-    if state.get("skip_fetch") and state.get("cache_path"):
+    if state.get("skip_fetch"):
         return {}
     payload = fetch_market_data(
         limit=state.get("limit"),
@@ -22,13 +22,13 @@ def fetch_node(state: PipelineState) -> dict[str, Any]:
         run_dir=state.get("run_dir"),
         refresh=bool(state.get("refresh")),
     )
-    return {"cache_path": payload["cache_path"], "run_dir": payload["run_dir"]}
+    return {"market_path": payload["market_path"], "run_dir": payload["run_dir"]}
 
 
 def screen_node(state: PipelineState) -> dict[str, Any]:
     payload = run_screen(
         n=state.get("n") or SCREEN_N,
-        cache_path=state.get("cache_path"),
+        market_path=state.get("market_path"),
         run_dir=state.get("run_dir"),
     )
     return {"screen_path": payload["screen_path"], "run_dir": payload["run_dir"]}
@@ -70,20 +70,26 @@ def run_pipeline(
     limit: int | None = None,
     tickers: list[str] | None = None,
     n: int = SCREEN_N,
-    cache_path: str | None = None,
+    market_path: str | None = None,
     skip_fetch: bool = False,
     refresh: bool = False,
 ) -> PipelineState:
-    app = build_graph()
+    """fetch -> screen -> news -> verdict into a new run folder. With skip_fetch the
+    screen reads `market_path`, or the newest earlier run's market.json."""
     state: PipelineState = {"n": n, "run_dir": str(new_run_dir())}
+    if skip_fetch:
+        if not market_path:
+            previous = latest_run_with("market.json")
+            if previous is None:
+                raise FileNotFoundError("--skip-fetch needs an earlier run with market.json, or --market PATH.")
+            market_path = str(previous / "market.json")
+        state["skip_fetch"] = True
     if limit is not None:
         state["limit"] = limit
     if tickers:
         state["tickers"] = tickers
-    if cache_path:
-        state["cache_path"] = cache_path
-    if skip_fetch:
-        state["skip_fetch"] = True
+    if market_path:
+        state["market_path"] = market_path
     if refresh:
         state["refresh"] = True
-    return app.invoke(state)
+    return build_graph().invoke(state)

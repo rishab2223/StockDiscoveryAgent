@@ -10,7 +10,7 @@ class PipelineState(TypedDict, total=False):
     refresh: bool
     skip_fetch: bool
     run_dir: str
-    cache_path: str
+    market_path: str
     screen_path: str
     news_path: str
     verdicts_path: str

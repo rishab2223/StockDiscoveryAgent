@@ -4,8 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sda.config import OUTPUT_DIR, ensure_dirs
-from sda.io_util import latest_file, read_json, write_json
+from sda.io_util import read_json, write_json
 from sda.run_dir import file_in_run, resolve_run_dir
 from sda.verdict.chain import run_verdicts
 
@@ -32,18 +31,26 @@ def write_verdicts_markdown(path: Path, as_of: str, verdicts: list[dict[str, Any
         "",
     ]
     for item in verdicts:
-        buckets = ", ".join(item.get("buckets") or [])
-        lines.append(f"## {item.get('ticker')}")
-        lines.append("")
-        lines.append(f"- Buckets: {buckets or 'n/a'}")
-        lines.append(f"- As of: {item.get('as_of')}")
-        lines.append(f"- Kept news items: {item.get('kept_news_count')}")
-        lines.append("")
-        lines.append(item.get("conclusion") or "_No conclusion._")
-        lines.append("")
+        lines += [
+            f"## {item.get('ticker')}",
+            "",
+            f"- Buckets: {', '.join(item.get('buckets') or []) or 'n/a'}",
+            f"- As of: {item.get('as_of')}",
+            f"- Kept news items: {item.get('kept_news_count')}",
+            "",
+            item.get("conclusion") or "_No conclusion._",
+            "",
+        ]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
+
+
+def _input(explicit: str | None, run_dir: Path, name: str, hint: str) -> Path:
+    found = Path(explicit) if explicit else file_in_run(run_dir, name)
+    if found is None:
+        raise FileNotFoundError(f"No {name} in {run_dir}. Run `python -m sda {hint}` first.")
+    return found
 
 
 def write_verdicts(
@@ -51,21 +58,10 @@ def write_verdicts(
     screen_path: str | None = None,
     run_dir: str | None = None,
 ) -> dict[str, Any]:
-    ensure_dirs()
+    """Ask the LLM for one conclusion per shortlisted ticker and write verdicts.json / .md."""
     folder = resolve_run_dir(run_dir, hint_path=news_path or screen_path)
-    news_file = Path(news_path) if news_path else file_in_run(folder, "news_clean.json")
-    if news_file is None:
-        news_file = latest_file(OUTPUT_DIR, "news_clean_", ".json")
-    if news_file is None:
-        raise FileNotFoundError("No cleaned news JSON found. Run `python -m sda news` first.")
-    news_payload = read_json(news_file)
-
-    screen_file = Path(screen_path) if screen_path else file_in_run(folder, "screen.json")
-    if screen_file is None:
-        screen_file = latest_file(OUTPUT_DIR, "screen_", ".json")
-    screen = read_json(screen_file) if screen_file else {}
-    if not screen:
-        raise FileNotFoundError("No screen JSON found for verdict metrics.")
+    news_payload = read_json(_input(news_path, folder, "news_clean.json", "news"))
+    screen = read_json(_input(screen_path, folder, "screen.json", "screen"))
 
     verdicts = run_verdicts(news_payload, _index_screen(screen))
     as_of = datetime.now(timezone.utc).replace(microsecond=0).isoformat()

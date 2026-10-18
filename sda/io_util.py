@@ -13,10 +13,3 @@ def write_json(path: Path, payload: Any) -> Path:
 
 def read_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
-
-
-def latest_file(directory: Path, prefix: str, suffix: str) -> Path | None:
-    if not directory.exists():
-        return None
-    matches = sorted(directory.glob(f"{prefix}*{suffix}"))
-    return matches[-1] if matches else None

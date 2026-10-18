@@ -4,12 +4,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sda.config import NEWS_LOOKBACK_DAYS, OUTPUT_DIR, ensure_dirs
-from sda.io_util import latest_file, read_json, write_json
-from sda.run_dir import file_in_run, resolve_run_dir
+from sda.config import NEWS_LOOKBACK_DAYS
+from sda.io_util import read_json, write_json
 from sda.news.classifier import classify_ambiguous
 from sda.news.fetch import fetch_ticker_news
 from sda.news.filter import filter_news, mentions_company
+from sda.run_dir import file_in_run, resolve_run_dir
 
 
 def unique_screen_tickers(screen: dict[str, Any]) -> dict[str, list[str]]:
@@ -25,14 +25,12 @@ def unique_screen_tickers(screen: dict[str, Any]) -> dict[str, list[str]]:
     return buckets
 
 
-def _load_screen(screen_path: str | None, run_dir: Path | None) -> dict[str, Any]:
+def _load_screen(screen_path: str | None, run_dir: Path) -> dict[str, Any]:
     if screen_path:
         return read_json(Path(screen_path))
-    if run_dir and file_in_run(run_dir, "screen.json"):
-        return read_json(run_dir / "screen.json")
-    found = latest_file(OUTPUT_DIR, "screen_", ".json")
+    found = file_in_run(run_dir, "screen.json")
     if found is None:
-        raise FileNotFoundError("No screen JSON found. Run `python -m sda screen` first.")
+        raise FileNotFoundError(f"No screen.json in {run_dir}. Run `python -m sda screen` first.")
     return read_json(found)
 
 
@@ -42,7 +40,6 @@ def analyze_news(
     run_dir: str | None = None,
 ) -> dict[str, Any]:
     """Fetch Yahoo news for screened names, drop noise, keep company-originated items."""
-    ensure_dirs()
     folder = resolve_run_dir(run_dir, hint_path=screen_path)
     screen = _load_screen(screen_path, folder)
     membership = unique_screen_tickers(screen)

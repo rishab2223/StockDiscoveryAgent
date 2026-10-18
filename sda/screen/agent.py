@@ -4,35 +4,38 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sda.config import CACHE_DIR, SCREEN_N, ensure_dirs
-from sda.io_util import latest_file, read_json, write_json
+from sda.config import SCREEN_N
+from sda.io_util import read_json, write_json
 from sda.run_dir import file_in_run, resolve_run_dir
 from sda.screen.scorer import score_universe, slim, top_n
 from sda.screen.writer import write_screen_csv, write_screen_markdown
 
+ASSUMPTIONS = {
+    "undervalued": "growth + cheap sector-relative PE/PS + DCF yield; traps excluded",
+    "overvalued": "rich multiples, weak DCF gap, stretched 1m move",
+    "dev_1w": "abs pct vs ~5 trading days",
+    "dev_1m": "abs pct vs ~21 trading days",
+}
 
-def _load_cache(cache_path: str | None, run_dir: Path | None) -> dict[str, Any]:
-    if cache_path:
-        path = Path(cache_path)
-    elif run_dir and file_in_run(run_dir, "market.json"):
-        path = run_dir / "market.json"
-    else:
-        path = latest_file(CACHE_DIR, "market_", ".json")
-        if path is None:
-            raise FileNotFoundError("No market cache found. Run `python -m sda fetch` first.")
-    return read_json(path)
+
+def _load_market(market_path: str | None, run_dir: Path) -> dict[str, Any]:
+    if market_path:
+        return read_json(Path(market_path))
+    found = file_in_run(run_dir, "market.json")
+    if found is None:
+        raise FileNotFoundError(f"No market.json in {run_dir}. Run `python -m sda fetch` first.")
+    return read_json(found)
 
 
 def run_screen(
     n: int = SCREEN_N,
-    cache_path: str | None = None,
+    market_path: str | None = None,
     run_dir: str | None = None,
 ) -> dict[str, Any]:
-    """Rank the cached universe and write shortlists into the run folder."""
-    ensure_dirs()
-    folder = resolve_run_dir(run_dir, hint_path=cache_path)
-    cache = _load_cache(cache_path, folder)
-    scored = score_universe(cache.get("tickers") or {})
+    """Rank the fetched universe and write the four shortlists into the run folder."""
+    folder = resolve_run_dir(run_dir, hint_path=market_path)
+    market = _load_market(market_path, folder)
+    scored = score_universe(market.get("tickers") or {})
 
     lists = {
         "undervalued": top_n(scored, "undervalued_score", n),
@@ -42,19 +45,14 @@ def run_screen(
     }
     slim_lists = {key: [slim(row) for row in rows] for key, rows in lists.items()}
 
-    as_of = cache.get("as_of") or datetime.now(timezone.utc).isoformat()
+    as_of = market.get("as_of") or datetime.now(timezone.utc).isoformat()
     json_path = folder / "screen.json"
     payload = {
         "as_of": as_of,
         "n": n,
-        "cache_universe": cache.get("universe"),
+        "universe": market.get("universe"),
         "lists": slim_lists,
-        "assumptions": {
-            "undervalued": "growth + cheap sector-relative PE/PS + DCF yield; traps excluded",
-            "overvalued": "rich multiples, weak DCF gap, stretched 1m move",
-            "dev_1w": "abs pct vs ~5 trading days",
-            "dev_1m": "abs pct vs ~21 trading days",
-        },
+        "assumptions": ASSUMPTIONS,
     }
     write_json(json_path, payload)
     md_path = write_screen_markdown(folder / "screen.md", as_of, slim_lists)
