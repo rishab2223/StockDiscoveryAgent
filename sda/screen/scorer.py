@@ -9,10 +9,11 @@ from sda.sectors import normalize_sector
 
 
 def _finite(value: Any) -> bool:
-    return isinstance(value, (int, float)) and value == value
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value == value
 
 
-def _z(value: float | None, med: float | None) -> float | None:
+def _rel_to_median(value: float | None, med: float | None) -> float | None:
+    """(value - median) / |median|: 0 at the sector median, +1 at twice it."""
     if value is None or med is None or med == 0:
         return None
     return (value - med) / abs(med)
@@ -23,14 +24,14 @@ def _clip(value: float, lo: float = -3.0, hi: float = 3.0) -> float:
 
 
 def attach_sector_relatives(records: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    by_sector: dict[str, list[str]] = defaultdict(list)
-    for ticker, rec in records.items():
-        by_sector[rec.get("sector") or "Unknown"].append(ticker)
+    by_sector: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for rec in records.values():
+        by_sector[rec.get("sector") or "Unknown"].append(rec)
 
-    sector_med: dict[str, dict[str, float]] = {}
+    sector_med: dict[str, dict[str, float | None]] = {}
     for sector, members in by_sector.items():
-        pe_vals = [records[t]["pe"] for t in members if _finite(records[t].get("pe")) and records[t]["pe"] > 0]
-        ps_vals = [records[t]["ps"] for t in members if _finite(records[t].get("ps")) and records[t]["ps"] > 0]
+        pe_vals = [m["pe"] for m in members if _finite(m.get("pe")) and m["pe"] > 0]
+        ps_vals = [m["ps"] for m in members if _finite(m.get("ps")) and m["ps"] > 0]
         sector_med[sector] = {
             "pe": median(pe_vals) if pe_vals else None,
             "ps": median(ps_vals) if ps_vals else None,
@@ -38,16 +39,16 @@ def attach_sector_relatives(records: dict[str, dict[str, Any]]) -> dict[str, dic
 
     out = {}
     for ticker, rec in records.items():
-        sector = rec.get("sector") or "Unknown"
-        med = sector_med.get(sector, {})
-        row = {
+        med = sector_med[rec.get("sector") or "Unknown"]
+        pe = rec["pe"] if _finite(rec.get("pe")) else None
+        ps = rec["ps"] if _finite(rec.get("ps")) else None
+        out[ticker] = {
             **rec,
-            "sector_pe_median": med.get("pe"),
-            "sector_ps_median": med.get("ps"),
-            "pe_vs_sector": _z(rec.get("pe") if _finite(rec.get("pe")) else None, med.get("pe")),
-            "ps_vs_sector": _z(rec.get("ps") if _finite(rec.get("ps")) else None, med.get("ps")),
+            "sector_pe_median": med["pe"],
+            "sector_ps_median": med["ps"],
+            "pe_vs_sector": _rel_to_median(pe, med["pe"]),
+            "ps_vs_sector": _rel_to_median(ps, med["ps"]),
         }
-        out[ticker] = row
     return out
 
 
@@ -58,28 +59,28 @@ def _component(value: float | None, weight: float, invert: bool = False) -> tupl
     return weight * _clip(signed), weight
 
 
+def _weighted(parts: list[tuple[float, float]], min_mass: float = 0.35) -> float | None:
+    """Weighted mean over the components that have data; None when too few do."""
+    mass = sum(weight for _, weight in parts)
+    if mass < min_mass:
+        return None
+    return sum(value for value, _ in parts) / mass
+
+
 def undervalued_score(rec: dict[str, Any]) -> float | None:
-    if rec.get("value_trap"):
+    if rec.get("value_trap") or rec.get("price") is None:
         return None
-    if rec.get("price") is None:
-        return None
+    margin_stdev = rec.get("margin_stdev")
     parts = [
         _component(rec.get("ni_yoy"), 0.25),
         _component(rec.get("ni_cagr_3y"), 0.15),
         _component(rec.get("pe_vs_sector"), 0.20, invert=True),
         _component(rec.get("ps_vs_sector"), 0.15, invert=True),
         _component(rec.get("dcf_yield"), 0.15),
-        _component(
-            -rec["margin_stdev"] * 10 if rec.get("margin_stdev") is not None else None,
-            0.05,
-        ),
+        _component(-margin_stdev * 10 if margin_stdev is not None else None, 0.05),
         _component(rec.get("operating_margin"), 0.05),
     ]
-    weighted = sum(p[0] for p in parts)
-    mass = sum(p[1] for p in parts)
-    if mass < 0.35:
-        return None
-    return weighted / mass
+    return _weighted(parts)
 
 
 def overvalued_score(rec: dict[str, Any]) -> float | None:
@@ -93,11 +94,7 @@ def overvalued_score(rec: dict[str, Any]) -> float | None:
         _component(rec.get("operating_margin"), 0.10, invert=True),
         _component(rec.get("pct_1m"), 0.10),
     ]
-    weighted = sum(p[0] for p in parts)
-    mass = sum(p[1] for p in parts)
-    if mass < 0.35:
-        return None
-    return weighted / mass
+    return _weighted(parts)
 
 
 def score_universe(raw_tickers: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:

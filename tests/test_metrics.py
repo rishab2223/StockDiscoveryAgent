@@ -1,60 +1,56 @@
-from sda.screen.metrics import enrich_record, simple_dcf
-from sda.screen.scorer import score_universe, top_n
+from sda.config import DcfAssumptions
+from sda.screen.metrics import _cagr, enrich_record, margin_stability, net_income_growth, simple_dcf
+from tests.conftest import make_record
 
 
-def test_value_trap_and_dcf():
-    record = {
-        "price": 50.0,
-        "shares": 10_000_000,
-        "free_cashflow_ttm": 80_000_000,
-        "fcf_annual": [80_000_000, 70_000_000],
-        "net_income_annual": [10_000_000, 20_000_000, 25_000_000],
-        "enterprise_value": 600_000_000,
-        "sector": "Tech",
-        "pe": 8,
-        "ps": 1.2,
-        "operating_margin": 0.2,
-        "pct_1w": -0.02,
-        "pct_1m": -0.04,
-    }
+def test_value_trap_flags_sharp_yoy_decline():
+    record = make_record(net_income_annual=[10_000_000, 20_000_000, 25_000_000])
     enriched = enrich_record(record)
     assert enriched["value_trap"] is True
-    assert enriched["ni_yoy"] is not None and enriched["ni_yoy"] < 0
-    dcf = simple_dcf(enriched)
-    assert dcf["dcf_fair_value"] is not None
-    assert dcf["dcf_yield"] is not None
+    assert enriched["ni_yoy"] < 0
+    # Trap or not, the DCF still runs on positive free cash flow.
+    assert enriched["dcf_fair_value"] is not None
+    assert enriched["dcf_yield"] is not None
 
 
-def test_screen_ranks_four_lists():
-    cheap = {
-        "price": 20,
-        "price_as_of": "2026-08-21",
-        "shares": 1_000_000,
-        "free_cashflow_ttm": 5_000_000,
-        "fcf_annual": [5_000_000, 4_000_000],
-        "net_income_annual": [4_000_000, 3_000_000, 2_500_000, 2_000_000],
-        "enterprise_value": 25_000_000,
-        "sector": "Energy",
-        "pe": 6,
-        "ps": 0.8,
-        "operating_margin": 0.25,
-        "pct_1w": 0.01,
-        "pct_1m": 0.02,
-    }
-    rich = {
-        **cheap,
-        "price": 200,
-        "pe": 80,
-        "ps": 18,
-        "free_cashflow_ttm": 1_000_000,
-        "fcf_annual": [1_000_000, 2_000_000],
-        "net_income_annual": [1_000_000, 3_000_000, 4_000_000],
-        "pct_1w": 0.22,
-        "pct_1m": 0.45,
-        "operating_margin": 0.02,
-    }
-    scored = score_universe({"CHEAP": cheap, "RICH": rich})
-    assert scored["CHEAP"]["undervalued_score"] is not None
-    assert scored["RICH"]["overvalued_score"] is not None
-    assert top_n(scored, "undervalued_score", 1)[0]["ticker"] == "CHEAP"
-    assert top_n(scored, "abs_pct_1w", 1)[0]["ticker"] == "RICH"
+def test_value_trap_flags_three_year_decline_into_losses():
+    growth = net_income_growth({"net_income_annual": [-1, 2, 3]})
+    assert growth["value_trap"] is True
+    assert net_income_growth({"net_income_annual": [3, 2, 1]})["value_trap"] is False
+    assert net_income_growth({"net_income_annual": []}) == {"ni_yoy": None, "ni_cagr_3y": None, "value_trap": False}
+
+
+def test_cagr_handles_short_and_negative_series():
+    assert _cagr([8, 4, 2, 1]) == 1.0
+    assert _cagr([1, 2]) is None
+    assert _cagr([2, 1, 1, 0]) is None
+    assert _cagr([-2, 1, 1, -4]) == 0.5  # falls back to simple growth when signs flip
+
+
+def test_margin_stability_needs_two_years():
+    assert margin_stability({"ebit_annual": [1], "revenue_annual": [10]}) is None
+    assert margin_stability({"ebit_annual": [1, 1], "revenue_annual": [10, 10]}) == 0.0
+    assert margin_stability({"ebit_annual": [2, 1], "revenue_annual": [10, 10]}) > 0
+
+
+def test_dcf_skips_financials_and_non_positive_cash():
+    empty = {"dcf_fair_value": None, "dcf_yield": None, "fcf_yield": None}
+    assert simple_dcf(make_record(sector="Financials")) == empty
+    assert simple_dcf(make_record(fcf_annual=[-5, 1], free_cashflow_ttm=-5)) == empty
+    assert simple_dcf(make_record(shares=None)) == empty
+
+
+def test_dcf_clamps_growth_and_prefers_annual_fcf():
+    record = make_record(fcf_annual=[10_000_000, 1_000_000])  # +900% YoY -> capped
+    assert simple_dcf(record)["dcf_growth_used"] == DcfAssumptions().growth_cap
+    record = make_record(fcf_annual=[1_000_000, 10_000_000])  # -90% -> floored
+    assert simple_dcf(record)["dcf_growth_used"] == DcfAssumptions().growth_floor
+    # A TTM figure far below the annual one is treated as noise.
+    record = make_record(fcf_annual=[5_000_000, 5_000_000], free_cashflow_ttm=100)
+    assert simple_dcf(record)["fcf_yield"] == 5_000_000 / 25_000_000
+
+
+def test_dcf_yield_is_relative_to_price():
+    out = simple_dcf(make_record(), DcfAssumptions(discount_rate=0.08))
+    assert out["dcf_yield"] == out["dcf_fair_value"] / 20.0 - 1
+    assert simple_dcf(make_record(), DcfAssumptions(discount_rate=0.02))["dcf_fair_value"] is None
