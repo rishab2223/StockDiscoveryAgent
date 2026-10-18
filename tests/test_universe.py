@@ -6,10 +6,10 @@ from sda.fetch.universe import _rows_from_frame, load_sp500
 
 
 def test_rows_from_wikipedia_and_fallback_columns():
-    wiki = pd.DataFrame({"Symbol": ["BRK.B", " aapl "], "Security": ["Berkshire", "Apple"], "GICS Sector": ["Financials", "Information Technology"]})
+    wiki = pd.DataFrame({"Symbol": ["BRK.B", " aapl "], "Security": ["Berkshire", "Apple"], "GICS Sector": ["Financials", None]})
     assert _rows_from_frame(wiki) == [
         {"symbol": "BRK-B", "sector": "Financials", "name": "Berkshire"},
-        {"symbol": "AAPL", "sector": "Information Technology", "name": "Apple"},
+        {"symbol": "AAPL", "sector": "Unknown", "name": "Apple"},
     ]
     csv = pd.DataFrame({"Symbol": ["MMM", float("nan")], "Name": ["3M", "x"], "Sector": ["Industrials", "y"]})
     assert _rows_from_frame(csv) == [{"symbol": "MMM", "sector": "Industrials", "name": "3M"}]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from typing import Any
 from urllib.request import Request, urlopen
 
 import pandas as pd
@@ -26,20 +27,27 @@ def _normalize_symbol(symbol: str) -> str:
     return symbol.strip().replace(".", "-").upper()
 
 
+def _text(value: Any, default: str) -> str:
+    if value is None or (isinstance(value, float) and value != value):  # NaN cell
+        return default
+    text = str(value).strip()
+    return text or default
+
+
 def _rows_from_frame(frame: pd.DataFrame) -> list[dict[str, str]]:
     symbol_col = "Symbol" if "Symbol" in frame.columns else frame.columns[0]
     sector_col = "GICS Sector" if "GICS Sector" in frame.columns else "Sector"
     name_col = "Security" if "Security" in frame.columns else "Name"
     rows = []
     for _, row in frame.iterrows():
-        symbol = _normalize_symbol(str(row[symbol_col]))
-        if not symbol or symbol == "NAN":
+        symbol = _normalize_symbol(_text(row[symbol_col], ""))
+        if not symbol:
             continue
         rows.append(
             {
                 "symbol": symbol,
-                "sector": str(row.get(sector_col) or "Unknown"),
-                "name": str(row.get(name_col) or symbol),
+                "sector": _text(row.get(sector_col), "Unknown"),
+                "name": _text(row.get(name_col), symbol),
             }
         )
     return rows
