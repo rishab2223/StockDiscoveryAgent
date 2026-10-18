@@ -17,12 +17,6 @@ HISTORY_PERIOD = "6mo"
 TRADING_DAYS_1W = 5
 TRADING_DAYS_1M = 21
 
-DCF_DISCOUNT_RATE = 0.10
-DCF_TERMINAL_GROWTH = 0.025
-DCF_YEARS = 5
-DCF_GROWTH_CAP = 0.15
-DCF_GROWTH_FLOOR = -0.05
-
 VALUE_TRAP_YOY = -0.25
 NEWS_LOOKBACK_DAYS = 7
 FUNDAMENTAL_WORKERS = 8
@@ -37,11 +31,11 @@ LLM_NEWS_CLASSIFIER = os.getenv("SMA_LLM_NEWS_CLASSIFIER", "0").lower() in {
 
 @dataclass(frozen=True)
 class DcfAssumptions:
-    discount_rate: float = DCF_DISCOUNT_RATE
-    terminal_growth: float = DCF_TERMINAL_GROWTH
-    years: int = DCF_YEARS
-    growth_cap: float = DCF_GROWTH_CAP
-    growth_floor: float = DCF_GROWTH_FLOOR
+    discount_rate: float = 0.10
+    terminal_growth: float = 0.025
+    years: int = 5
+    growth_cap: float = 0.15
+    growth_floor: float = -0.05
 
 
 def ensure_dirs() -> None:

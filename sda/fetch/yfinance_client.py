@@ -54,19 +54,13 @@ def download_history(tickers: list[str]) -> pd.DataFrame:
 
 def price_snapshot(hist: pd.DataFrame, ticker: str) -> dict[str, Any]:
     closes = _series_close(hist, ticker)
-    last = float(closes.iloc[-1]) if len(closes) else None
-    last_date = str(closes.index[-1].date()) if len(closes) else None
+    if closes.empty:
+        return {"price": None, "price_as_of": None, "pct_1w": None, "pct_1m": None}
     return {
-        "price": last,
-        "price_as_of": last_date,
+        "price": float(closes.iloc[-1]),
+        "price_as_of": str(closes.index[-1].date()),
         "pct_1w": _pct_change(closes, TRADING_DAYS_1W),
         "pct_1m": _pct_change(closes, TRADING_DAYS_1M),
-        "close_5d_ago": float(closes.iloc[-(TRADING_DAYS_1W + 1)])
-        if len(closes) >= TRADING_DAYS_1W + 1
-        else None,
-        "close_21d_ago": float(closes.iloc[-(TRADING_DAYS_1M + 1)])
-        if len(closes) >= TRADING_DAYS_1M + 1
-        else None,
     }
 
 

@@ -8,7 +8,6 @@ from sda.config import NEWS_LOOKBACK_DAYS, OUTPUT_DIR, ensure_dirs
 from sda.io_util import latest_file, read_json, write_json
 from sda.run_dir import file_in_run, resolve_run_dir
 from sda.news.classifier import classify_ambiguous
-from sda.news.documents import news_to_documents
 from sda.news.fetch import fetch_ticker_news
 from sda.news.filter import filter_news, mentions_company
 
@@ -67,13 +66,9 @@ def analyze_news(
                 kept.append(item)
             else:
                 dropped.append(item)
-        docs = news_to_documents(kept)
         by_ticker[ticker] = {
             "buckets": buckets,
             "kept": kept,
-            "kept_documents": [
-                {"page_content": doc.page_content, "metadata": doc.metadata} for doc in docs
-            ],
             "dropped_count": len(dropped),
             "raw_count": len(raw),
         }
@@ -89,5 +84,4 @@ def analyze_news(
     write_json(path, payload)
     payload["news_path"] = str(path)
     payload["run_dir"] = str(folder)
-    payload["screen"] = screen
     return payload

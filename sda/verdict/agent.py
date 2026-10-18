@@ -63,7 +63,7 @@ def write_verdicts(
     screen_file = Path(screen_path) if screen_path else file_in_run(folder, "screen.json")
     if screen_file is None:
         screen_file = latest_file(OUTPUT_DIR, "screen_", ".json")
-    screen = read_json(screen_file) if screen_file else news_payload.get("screen") or {}
+    screen = read_json(screen_file) if screen_file else {}
     if not screen:
         raise FileNotFoundError("No screen JSON found for verdict metrics.")
 
