@@ -6,21 +6,8 @@ from typing import Any
 
 from sda.io_util import read_json, write_json
 from sda.run_dir import file_in_run, resolve_run_dir
+from sda.screen.agent import index_screen
 from sda.verdict.chain import run_verdicts
-
-
-def _index_screen(screen: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    rows: dict[str, dict[str, Any]] = {}
-    for bucket, items in (screen.get("lists") or {}).items():
-        for row in items:
-            ticker = row.get("ticker")
-            if not ticker:
-                continue
-            if ticker not in rows:
-                rows[ticker] = {**row, "buckets": [bucket]}
-            elif bucket not in rows[ticker]["buckets"]:
-                rows[ticker]["buckets"].append(bucket)
-    return rows
 
 
 def write_verdicts_markdown(path: Path, as_of: str, verdicts: list[dict[str, Any]]) -> Path:
@@ -63,7 +50,7 @@ def write_verdicts(
     news_payload = read_json(_input(news_path, folder, "news_clean.json", "news"))
     screen = read_json(_input(screen_path, folder, "screen.json", "screen"))
 
-    verdicts = run_verdicts(news_payload, _index_screen(screen))
+    verdicts = run_verdicts(news_payload, index_screen(screen))
     as_of = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     json_path = folder / "verdicts.json"
     payload = {"as_of": as_of, "verdicts": verdicts}

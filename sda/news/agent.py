@@ -10,19 +10,7 @@ from sda.news.classifier import classify_ambiguous
 from sda.news.fetch import fetch_ticker_news
 from sda.news.filter import filter_news, mentions_company
 from sda.run_dir import file_in_run, resolve_run_dir
-
-
-def unique_screen_tickers(screen: dict[str, Any]) -> dict[str, list[str]]:
-    buckets: dict[str, list[str]] = {}
-    for name, rows in (screen.get("lists") or {}).items():
-        for row in rows:
-            ticker = row.get("ticker")
-            if not ticker:
-                continue
-            buckets.setdefault(ticker, [])
-            if name not in buckets[ticker]:
-                buckets[ticker].append(name)
-    return buckets
+from sda.screen.agent import index_screen
 
 
 def _load_screen(screen_path: str | None, run_dir: Path) -> dict[str, Any]:
@@ -42,18 +30,11 @@ def analyze_news(
     """Fetch Yahoo news for screened names, drop noise, keep company-originated items."""
     folder = resolve_run_dir(run_dir, hint_path=screen_path)
     screen = _load_screen(screen_path, folder)
-    membership = unique_screen_tickers(screen)
     by_ticker: dict[str, Any] = {}
 
-    for ticker, buckets in membership.items():
-        name = None
-        for rows in (screen.get("lists") or {}).values():
-            for row in rows:
-                if row.get("ticker") == ticker:
-                    name = row.get("name")
-                    break
+    for ticker, row in index_screen(screen).items():
         raw = fetch_ticker_news(ticker, lookback_days=lookback_days)
-        raw = [item for item in raw if mentions_company(item, ticker, name)]
+        raw = [item for item in raw if mentions_company(item, ticker, row.get("name"))]
         split = filter_news(raw)
         maybe_resolved = classify_ambiguous(split["maybe"])
         kept = list(split["keep"])
@@ -64,7 +45,7 @@ def analyze_news(
             else:
                 dropped.append(item)
         by_ticker[ticker] = {
-            "buckets": buckets,
+            "buckets": row["buckets"],
             "kept": kept,
             "dropped_count": len(dropped),
             "raw_count": len(raw),

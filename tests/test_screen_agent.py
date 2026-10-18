@@ -4,8 +4,8 @@ import json
 import pytest
 
 from sda import config
-from sda.screen.agent import run_screen
-from tests.conftest import make_record, write_run
+from sda.screen.agent import index_screen, run_screen
+from tests.conftest import make_record, sample_screen, write_run
 
 
 def _market():
@@ -54,3 +54,11 @@ def test_run_screen_requires_market():
     with pytest.raises(FileNotFoundError):
         run_screen()
 
+
+def test_index_screen_merges_buckets_in_list_order():
+    rows = index_screen(sample_screen())
+    assert list(rows) == ["AAA", "BBB"]
+    assert rows["AAA"]["buckets"] == ["undervalued", "dev_1w"] and rows["AAA"]["name"] == "Alpha Inc."
+    assert rows["BBB"]["buckets"] == ["undervalued"]
+    assert index_screen({}) == {}
+    assert index_screen({"lists": {"x": [{"name": "no ticker"}]}}) == {}

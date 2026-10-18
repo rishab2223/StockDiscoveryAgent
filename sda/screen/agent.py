@@ -27,6 +27,20 @@ def _load_market(market_path: str | None, run_dir: Path) -> dict[str, Any]:
     return read_json(found)
 
 
+def index_screen(screen: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """ticker -> its screen row plus the buckets it appears in (unique across the four lists)."""
+    rows: dict[str, dict[str, Any]] = {}
+    for bucket, items in (screen.get("lists") or {}).items():
+        for row in items:
+            ticker = row.get("ticker")
+            if not ticker:
+                continue
+            entry = rows.setdefault(ticker, {**row, "buckets": []})
+            if bucket not in entry["buckets"]:
+                entry["buckets"].append(bucket)
+    return rows
+
+
 def run_screen(
     n: int = SCREEN_N,
     market_path: str | None = None,
