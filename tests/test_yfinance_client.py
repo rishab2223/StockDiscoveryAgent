@@ -1,5 +1,8 @@
+import json
+
 import pandas as pd
 
+from sda import config
 from sda.fetch import yfinance_client as client
 from sda.fetch.yfinance_client import _pct_change, _row_history, _safe_float, fetch_fundamentals_many, price_snapshot
 
@@ -51,17 +54,39 @@ def test_row_history_and_safe_float():
     assert _safe_float(float("nan")) is None and _safe_float(None) is None and _safe_float("x") is None
 
 
-def test_partial_records_are_kept_and_reported(monkeypatch):
+def test_fundamentals_cache_and_partial_records(monkeypatch):
+    calls = []
+
     def fake_fetch(symbol, sector=None):
+        calls.append(symbol)
         if symbol == "ERR":
             raise RuntimeError("boom")
         return {"name": symbol, "sector": sector, "pe": 10.0, "info_missing": symbol == "THROTTLED"}
 
     monkeypatch.setattr(client, "fetch_fundamentals", fake_fetch)
-    results, errors = fetch_fundamentals_many(["AAA", "THROTTLED", "ERR"], {"AAA": "Energy"}, workers=2)
+    sectors = {"AAA": "Energy"}
+
+    results, errors, stats = fetch_fundamentals_many(["AAA", "THROTTLED", "ERR"], sectors, workers=2)
+    assert stats == {"cached": 0, "fetched": 3}
     assert results["AAA"] == {"name": "AAA", "sector": "Energy", "pe": 10.0}
-    assert "info_missing" not in results["THROTTLED"] and "ERR" not in results
+    assert "info_missing" not in results["THROTTLED"]
     assert {e["ticker"] for e in errors} == {"THROTTLED", "ERR"}
+    cached = config.CACHE_DIR / "fundamentals"
+    assert (cached / "AAA.json").exists() and not (cached / "THROTTLED.json").exists()
+    assert json.loads((cached / "AAA.json").read_text())["pe"] == 10.0
+
+    calls.clear()
+    results, errors, stats = fetch_fundamentals_many(["AAA", "THROTTLED"], sectors, workers=2)
+    assert calls == ["THROTTLED"] and stats == {"cached": 1, "fetched": 1}
+
+    calls.clear()
+    fetch_fundamentals_many(["AAA"], sectors, workers=2, refresh=True)
+    assert calls == ["AAA"]
+
+    monkeypatch.setattr(config, "FUNDAMENTALS_TTL_HOURS", 0)
+    calls.clear()
+    fetch_fundamentals_many(["AAA"], sectors, workers=2)
+    assert calls == ["AAA"]  # expired
 
 
 def test_info_retry_sleeps_then_gives_up(monkeypatch):

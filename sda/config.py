@@ -23,6 +23,9 @@ NEWS_COUNT = 25
 FUNDAMENTAL_WORKERS = 8
 # Yahoo answers throttled .info calls with an empty dict; retry this many times.
 INFO_RETRIES = 2
+# Reuse per-ticker fundamentals and the S&P 500 list so same-day reruns skip ~500 slow calls.
+FUNDAMENTALS_TTL_HOURS = 24
+UNIVERSE_TTL_DAYS = 7
 
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 LLM_NEWS_CLASSIFIER = os.getenv("SMA_LLM_NEWS_CLASSIFIER", "0").lower() in {

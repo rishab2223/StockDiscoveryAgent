@@ -7,6 +7,7 @@ class PipelineState(TypedDict, total=False):
     limit: int | None
     tickers: list[str] | None
     n: int
+    refresh: bool
     skip_fetch: bool
     run_dir: str
     cache_path: str

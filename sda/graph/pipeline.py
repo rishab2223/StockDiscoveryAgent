@@ -20,6 +20,7 @@ def fetch_node(state: PipelineState) -> dict[str, Any]:
         limit=state.get("limit"),
         tickers=state.get("tickers"),
         run_dir=state.get("run_dir"),
+        refresh=bool(state.get("refresh")),
     )
     return {"cache_path": payload["cache_path"], "run_dir": payload["run_dir"]}
 
@@ -71,6 +72,7 @@ def run_pipeline(
     n: int = SCREEN_N,
     cache_path: str | None = None,
     skip_fetch: bool = False,
+    refresh: bool = False,
 ) -> PipelineState:
     app = build_graph()
     state: PipelineState = {"n": n, "run_dir": str(new_run_dir())}
@@ -82,4 +84,6 @@ def run_pipeline(
         state["cache_path"] = cache_path
     if skip_fetch:
         state["skip_fetch"] = True
+    if refresh:
+        state["refresh"] = True
     return app.invoke(state)

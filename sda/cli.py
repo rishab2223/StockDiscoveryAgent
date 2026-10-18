@@ -22,6 +22,7 @@ def build_parser() -> argparse.ArgumentParser:
     fetch = sub.add_parser("fetch", help="Data Fetcher: yfinance -> cache")
     fetch.add_argument("--limit", type=int, default=None, help="Only the first N S&P 500 names")
     fetch.add_argument("--tickers", type=str, default=None, help="Comma-separated override list")
+    fetch.add_argument("--refresh", action="store_true", help="Ignore cached universe and fundamentals")
 
     screen = sub.add_parser("screen", help="Screening Agent: cache -> 20x4 lists")
     screen.add_argument("--n", type=int, default=SCREEN_N)
@@ -40,6 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--n", type=int, default=SCREEN_N)
     run.add_argument("--cache", dest="cache_path", default=None)
     run.add_argument("--skip-fetch", action="store_true")
+    run.add_argument("--refresh", action="store_true", help="Ignore cached universe and fundamentals")
     return parser
 
 
@@ -49,8 +51,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "fetch":
         from sda.fetch.agent import fetch_market_data
 
-        payload = fetch_market_data(limit=args.limit, tickers=_tickers(args.tickers))
-        print(json.dumps({"run_dir": payload.get("run_dir"), "cache_path": payload["cache_path"], "ticker_count": payload["ticker_count"]}, indent=2))
+        payload = fetch_market_data(limit=args.limit, tickers=_tickers(args.tickers), refresh=args.refresh)
+        summary = {k: payload.get(k) for k in ("run_dir", "cache_path", "ticker_count", "fundamentals_cached")}
+        print(json.dumps(summary, indent=2))
         return 0
 
     if args.command == "screen":
@@ -84,6 +87,7 @@ def main(argv: list[str] | None = None) -> int:
             n=args.n,
             cache_path=args.cache_path,
             skip_fetch=args.skip_fetch,
+            refresh=args.refresh,
         )
         print(
             json.dumps(

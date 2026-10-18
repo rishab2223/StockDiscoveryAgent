@@ -16,8 +16,10 @@ def fetch_market_data(
     tickers: list[str] | None = None,
     cache_path: str | None = None,
     run_dir: str | None = None,
+    refresh: bool = False,
 ) -> dict[str, Any]:
-    """Pull S&P 500 (or an override list) from yfinance and write market.json in the run folder."""
+    """Pull S&P 500 (or an override list) from yfinance and write market.json in the run folder.
+    `refresh` bypasses the universe and fundamentals caches."""
     folder = Path(run_dir) if run_dir else (Path(cache_path).parent if cache_path else new_run_dir())
     folder.mkdir(parents=True, exist_ok=True)
     as_of = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -26,7 +28,7 @@ def fetch_market_data(
     if tickers:
         universe_rows = [{"symbol": t.upper(), "sector": None, "name": None} for t in tickers]
     else:
-        universe_rows = load_sp500()
+        universe_rows = load_sp500(refresh=refresh)
         if limit:
             universe_rows = universe_rows[:limit]
 
@@ -35,7 +37,7 @@ def fetch_market_data(
     wiki_names = {row["symbol"]: row["name"] for row in universe_rows if row["name"]}
 
     history = download_history(symbols)
-    fundamentals, errors = fetch_fundamentals_many(symbols, wiki_sectors)
+    fundamentals, errors, stats = fetch_fundamentals_many(symbols, wiki_sectors, refresh=refresh)
 
     records: dict[str, Any] = {}
     for symbol in symbols:
@@ -56,6 +58,7 @@ def fetch_market_data(
         "as_of": as_of,
         "universe": "custom" if tickers else "sp500",
         "ticker_count": len(records),
+        "fundamentals_cached": stats["cached"],
         "tickers": records,
         "errors": errors,
         "source": "yfinance",

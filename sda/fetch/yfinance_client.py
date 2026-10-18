@@ -8,7 +8,8 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
-from sda.config import FUNDAMENTAL_WORKERS, HISTORY_PERIOD, INFO_RETRIES, TRADING_DAYS_1M, TRADING_DAYS_1W
+from sda import config
+from sda.fetch import cache
 from sda.sectors import normalize_sector
 
 
@@ -45,7 +46,7 @@ def download_history(tickers: list[str]) -> pd.DataFrame:
         return pd.DataFrame()
     return yf.download(
         tickers=tickers,
-        period=HISTORY_PERIOD,
+        period=config.HISTORY_PERIOD,
         interval="1d",
         group_by="ticker",
         auto_adjust=True,
@@ -61,8 +62,8 @@ def price_snapshot(hist: pd.DataFrame, ticker: str) -> dict[str, Any]:
     return {
         "price": float(closes.iloc[-1]),
         "price_as_of": str(closes.index[-1].date()),
-        "pct_1w": _pct_change(closes, TRADING_DAYS_1W),
-        "pct_1m": _pct_change(closes, TRADING_DAYS_1M),
+        "pct_1w": _pct_change(closes, config.TRADING_DAYS_1W),
+        "pct_1m": _pct_change(closes, config.TRADING_DAYS_1M),
     }
 
 
@@ -119,7 +120,7 @@ def fetch_fundamentals(ticker: str, sector: str | None = None) -> dict[str, Any]
     `sector` is the GICS label from the index list and wins over Yahoo's own
     taxonomy; `info_missing` tells the caller the reply was throttled."""
     stock = yf.Ticker(ticker)
-    info = _info_with_retry(stock, INFO_RETRIES)
+    info = _info_with_retry(stock, config.INFO_RETRIES)
     financials = _statement(stock, "financials")
     cashflow = _statement(stock, "cashflow")
 
@@ -150,10 +151,23 @@ def fetch_fundamentals(ticker: str, sector: str | None = None) -> dict[str, Any]
 def fetch_fundamentals_many(
     tickers: list[str],
     sectors: dict[str, str],
-    workers: int = FUNDAMENTAL_WORKERS,
-) -> tuple[dict[str, dict[str, Any]], list[dict[str, str]]]:
+    workers: int | None = None,
+    refresh: bool = False,
+) -> tuple[dict[str, dict[str, Any]], list[dict[str, str]], dict[str, int]]:
+    """Fundamentals for many tickers in parallel, reusing cached entries younger
+    than FUNDAMENTALS_TTL_HOURS. Returns (records, errors, {"cached", "fetched"})."""
     results: dict[str, dict[str, Any]] = {}
     errors: list[dict[str, str]] = []
+    max_age = config.FUNDAMENTALS_TTL_HOURS * 3600
+
+    pending = []
+    for ticker in tickers:
+        hit = None if refresh else cache.load("fundamentals", ticker, max_age)
+        if hit is not None:
+            results[ticker] = hit
+        else:
+            pending.append(ticker)
+    stats = {"cached": len(results), "fetched": len(pending)}
 
     def _one(symbol: str) -> tuple[str, dict[str, Any] | None, str | None]:
         try:
@@ -161,15 +175,17 @@ def fetch_fundamentals_many(
         except Exception as exc:
             return symbol, None, str(exc)
 
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = [pool.submit(_one, ticker) for ticker in tickers]
+    with ThreadPoolExecutor(max_workers=workers or config.FUNDAMENTAL_WORKERS) as pool:
+        futures = [pool.submit(_one, ticker) for ticker in pending]
         for future in as_completed(futures):
             symbol, payload, error = future.result()
             if payload is None:
                 errors.append({"ticker": symbol, "error": error or "unknown"})
                 continue
             if payload.pop("info_missing"):
-                # Keep the partial record so prices still rank movers, but report it.
+                # Keep the partial record (prices still rank movers) but do not cache it.
                 errors.append({"ticker": symbol, "error": "Yahoo .info empty after retries; fundamentals partial"})
+            else:
+                cache.store("fundamentals", symbol, payload)
             results[symbol] = payload
-    return results, errors
+    return results, errors, stats
