@@ -12,9 +12,16 @@ from sda import config
 @pytest.fixture(autouse=True)
 def isolated_env(tmp_path, monkeypatch):
     """Every test gets its own output/ and cache/ and no live LLM."""
+    from sda.llm import claude
+
+    def no_live_claude(*args, **kwargs):
+        raise AssertionError("a test reached the live Claude Agent SDK; patch structured_batch")
+
     monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path / "output")
     monkeypatch.setattr(config, "CACHE_DIR", tmp_path / "cache")
     monkeypatch.setattr(config, "LLM_NEWS_CLASSIFIER", False)
+    monkeypatch.setattr(config, "LLM_PROVIDER", "claude")
+    monkeypatch.setattr(claude, "structured_batch", no_live_claude)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     return tmp_path
 

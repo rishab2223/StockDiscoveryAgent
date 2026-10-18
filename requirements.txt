@@ -1,12 +1,14 @@
-# Runtime (tested with yfinance 1.6, pandas 3.0, langchain-core 1.6, langgraph 1.2 on Python 3.14)
+# Runtime (tested with yfinance 1.6, pandas 3.0, claude-agent-sdk 0.2.168,
+# langchain-core 1.6, langgraph 1.2 on Python 3.14)
 yfinance>=1.0
 pandas>=2.2.0
 numpy>=1.26.0
 lxml>=5.0.0          # pandas.read_html for the S&P 500 table
 python-dotenv>=1.0.1
 pydantic>=2.8.0
+claude-agent-sdk>=0.2.0   # LLM_PROVIDER=claude (default)
 langchain-core>=0.3.0
-langchain-openai>=0.2.0
+langchain-openai>=0.2.0   # LLM_PROVIDER=openai
 langgraph>=0.2.0
 
 # Tests

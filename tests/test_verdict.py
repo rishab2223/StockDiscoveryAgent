@@ -3,6 +3,7 @@ import json
 import pytest
 
 from sda import config
+from sda.llm import claude
 from sda.verdict import chain as chain_mod
 from sda.verdict.agent import write_verdicts, write_verdicts_markdown
 from sda.verdict.chain import TickerVerdict, _metrics_block, _news_block, run_verdicts
@@ -37,7 +38,37 @@ def test_prompt_blocks():
     assert "pe: 6\n" in _metrics_block({"pe": 6}) + "\n" and "overvalued_score: None" in _metrics_block({"pe": 6})
 
 
-def test_run_verdicts_requires_key_and_preserves_order(monkeypatch):
+def test_claude_provider_formats_prompts_and_keeps_order(monkeypatch):
+    calls = []
+
+    def fake_batch(system, prompts, schema):
+        calls.append((system, prompts, schema))
+        return [TickerVerdict(conclusion=f"claude {i}") for i in range(len(prompts))]
+
+    monkeypatch.setattr(claude, "structured_batch", fake_batch)
+    out = run_verdicts(_news_payload(), {"AAA": {"pe": 6}})
+    assert [(v["ticker"], v["conclusion"]) for v in out] == [("AAA", "claude 0"), ("BBB", "claude 1")]
+    assert "error" not in out[0]
+    system, prompts, schema = calls[0]
+    assert system == chain_mod.SYSTEM_PROMPT and schema is TickerVerdict
+    assert prompts[0].startswith("Ticker: AAA\nBuckets: undervalued, dev_1w\nAs of: 2026-10-01")
+    assert "pe: 6" in prompts[0] and "No usable" in prompts[1]
+
+
+def test_failed_calls_are_recorded_and_total_failure_raises(monkeypatch):
+    monkeypatch.setattr(
+        claude, "structured_batch", lambda system, prompts, schema: [TickerVerdict(conclusion="ok"), RuntimeError("timed out")]
+    )
+    out = run_verdicts(_news_payload(), {})
+    assert out[0]["conclusion"] == "ok" and out[1]["conclusion"] is None and out[1]["error"] == "timed out"
+
+    monkeypatch.setattr(claude, "structured_batch", lambda system, prompts, schema: [RuntimeError("logged out")] * len(prompts))
+    with pytest.raises(RuntimeError, match="Every verdict call failed; first error: logged out"):
+        run_verdicts(_news_payload(), {})
+
+
+def test_openai_provider_requires_key_and_preserves_order(monkeypatch):
+    monkeypatch.setattr(config, "LLM_PROVIDER", "openai")
     with pytest.raises(RuntimeError):
         run_verdicts(_news_payload(), {})
     monkeypatch.setenv("OPENAI_API_KEY", "x")
@@ -62,6 +93,7 @@ def test_run_verdicts_requires_key_and_preserves_order(monkeypatch):
 
 def test_write_verdicts_end_to_end(monkeypatch):
     run_dir = write_run(config.OUTPUT_DIR / "2026-10-01_000000Z", screen=sample_screen(), news_clean=_news_payload())
+    monkeypatch.setattr(config, "LLM_PROVIDER", "openai")
     monkeypatch.setenv("OPENAI_API_KEY", "x")
     monkeypatch.setattr(chain_mod, "build_verdict_chain", lambda: FakeChain())
 

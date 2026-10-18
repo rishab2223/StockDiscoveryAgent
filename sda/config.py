@@ -31,9 +31,17 @@ NEWS_LOOKBACK_DAYS = 7
 NEWS_COUNT = 25
 NEWS_WORKERS = 8
 
-# LLM
+# LLM, set in .env. LLM_PROVIDER picks who writes verdicts and classifies leftover headlines:
+#   claude: Claude Agent SDK on your Claude login or CLAUDE_CODE_OAUTH_TOKEN (no API key)
+#   openai: LangChain + OPENAI_API_KEY
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "claude").strip().lower()
+if LLM_PROVIDER not in {"claude", "openai"}:
+    raise ValueError(f"LLM_PROVIDER must be claude or openai, not {LLM_PROVIDER!r}")
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-opus-5-5")
+CLAUDE_EFFORT = os.getenv("CLAUDE_EFFORT", "medium")  # low | medium | high | xhigh | max
+CLAUDE_POOL = int(os.getenv("CLAUDE_POOL", "4"))  # Claude Code processes answering side by side
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-LLM_CONCURRENCY = 8
+LLM_CONCURRENCY = 8  # OpenAI calls in flight
 # Env var name kept from the first release so existing .env files keep working.
 LLM_NEWS_CLASSIFIER = os.getenv("SMA_LLM_NEWS_CLASSIFIER", "0").lower() in {"1", "true", "yes"}
 

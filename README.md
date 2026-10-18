@@ -1,6 +1,6 @@
 # Stock Discovery Agent
 
-Personal research pipeline for US S&P 500 names: fetch Yahoo Finance data, rank undervalued / overvalued / large movers, filter company news, and write GPT verdicts into a dated run folder.
+Personal research pipeline for US S&P 500 names: fetch Yahoo Finance data, rank undervalued / overvalued / large movers, filter company news, and write LLM verdicts (Claude by default) into a dated run folder.
 
 GitHub: [rishab2223/StockDiscoveryAgent](https://github.com/rishab2223/StockDiscoveryAgent)
 
@@ -15,7 +15,7 @@ This is **not** investment advice. Valuation is a local model, not a vendor "fai
    - largest absolute 1-week move
    - largest absolute 1-month move
 3. **News** — Yahoo headlines for the shortlist only, fetched in parallel. A story counts only if Yahoo's `relatedTickers` names the company (or, failing that, the symbol or a distinctive word of the name appears). Opinion publishers and analyst-rating headlines are dropped by rule; leftovers are dropped unless `SMA_LLM_NEWS_CLASSIFIER=1`.
-4. **Verdict** — OpenAI writes a free-form conclusion per unique ticker from the screen metrics plus the cleaned news.
+4. **Verdict** — Claude (or OpenAI, see `LLM_PROVIDER`) writes a free-form conclusion per unique ticker from the screen metrics plus the cleaned news.
 
 `python -m sda run` wires the four steps with LangGraph. Fetch and screen never call an LLM.
 
@@ -30,15 +30,22 @@ pip install -r requirements.txt
 copy .env.example .env
 ```
 
-Put `OPENAI_API_KEY` in `.env` (gitignored). Do not put the key in `.env.example`.
+### LLM settings (`.env`)
 
-```text
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o-mini
-SMA_LLM_NEWS_CLASSIFIER=0
-```
+All LLM choices live in `.env` (gitignored; defaults in `sda/config.py`), so you can change the model at any time without touching code:
 
-`SMA_LLM_NEWS_CLASSIFIER=1` sends only **maybe** headlines to GPT for keep/drop. Verdicts always need the API key. Optional `SDA_OUTPUT_DIR` / `SDA_CACHE_DIR` move the run folders and caches elsewhere.
+| Setting | Default | Meaning |
+|---|---|---|
+| `LLM_PROVIDER` | `claude` | `claude` or `openai` — who writes verdicts and classifies leftover headlines |
+| `CLAUDE_MODEL` | `claude-opus-5-5` | Any model Claude Code accepts, e.g. `claude-opus-5-5`, `claude-sonnet-5-5`, or the alias `sonnet` |
+| `CLAUDE_EFFORT` | `medium` | `low` / `medium` / `high` / `xhigh` / `max` — thinking depth; lower is faster |
+| `CLAUDE_POOL` | `4` | Claude Code processes answering side by side |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Used only with `LLM_PROVIDER=openai` (needs `OPENAI_API_KEY`) |
+| `SMA_LLM_NEWS_CLASSIFIER` | `0` | `1` sends only **maybe** headlines to the LLM for keep/drop |
+
+**Claude needs no API key.** It runs through the [Claude Agent SDK](https://pypi.org/project/claude-agent-sdk/), which drives a bundled Claude Code binary and signs in the way Claude Code does: log in once with the Claude Code CLI (`claude`, then `/login`), or create a long-lived token with `claude setup-token` and set it as `CLAUDE_CODE_OAUTH_TOKEN`. On Windows a token set in your user environment is picked up even by terminals opened before you set it. Calls count against your Claude plan's usage limits.
+
+Optional `SDA_OUTPUT_DIR` / `SDA_CACHE_DIR` move the run folders and caches elsewhere.
 
 ## Commands
 
@@ -68,7 +75,7 @@ Each run writes to `output/<UTC-timestamp>/` so runs do not overwrite each other
 | `market.json` | Full fetched universe, plus `errors` (tickers Yahoo throttled or dropped) and `fundamentals_cached` |
 | `screen.json` / `.md` / `.csv` | Four shortlists |
 | `news_clean.json` | Kept headlines per ticker with bucket membership and raw/dropped counts |
-| `verdicts.json` / `.md` | GPT conclusions (watchlist) |
+| `verdicts.json` / `.md` | LLM conclusions (watchlist); a ticker whose call failed has an empty `conclusion` and an `error` |
 
 `output/` and `data/cache/` are gitignored.
 
@@ -76,7 +83,9 @@ Each run writes to `output/<UTC-timestamp>/` so runs do not overwrite each other
 
 Yahoo throttles per-ticker `.info` calls at full-index scale and answers with an empty dict rather than an error. The fetch step retries those (`INFO_RETRIES`), records the tickers it still could not complete under `errors`, and keeps a partial record (price only) so they can still appear in the mover lists.
 
-Per-ticker fundamentals are cached in `data/cache/fundamentals/` for 24 hours and the S&P 500 list in `data/cache/universe/` for 7 days (`sda/config.py`). Measured on 60 names: cold fetch 14 s, warm fetch 4 s (prices are always re-downloaded). Screen is instant; news for ~16 tickers takes ~4 s with 8 threads; verdicts run 8 LLM calls at a time. A full-index run is dominated by the first fetch of the day (roughly 1–2 minutes) and the ~70 verdict calls.
+Per-ticker fundamentals are cached in `data/cache/fundamentals/` for 24 hours and the S&P 500 list in `data/cache/universe/` for 7 days (`sda/config.py`). Measured on 60 names: cold fetch 14 s, warm fetch 4 s (prices are always re-downloaded). Screen is instant; news for ~16 tickers takes ~4 s with 8 threads.
+
+Verdicts with Claude run on `CLAUDE_POOL` kept Claude Code processes: starting a process costs ~2 s once, while a fresh process per call would cost ~17 s each. `/clear` after every answer keeps tickers from seeing each other. If a process breaks, its remaining tickers fall back to one-off calls. Measured: 16 verdicts in 51 s with Opus 5.5 at `medium` and a pool of 4, so a full run of ~70 tickers takes roughly 3–4 minutes. A higher pool or a lower effort is faster. The OpenAI provider runs 8 calls at a time.
 
 ## Layout
 
@@ -87,8 +96,9 @@ sda/
   run_dir.py       output/<stamp>/ resolution
   fetch/           S&P 500 list (universe.py), yfinance client, on-disk cache
   screen/          metrics (growth, DCF, margins), composite scorer, writers
-  news/            Yahoo news fetch, rule filter, optional GPT classifier
-  verdict/         LangChain + OpenAI verdict chain
+  news/            Yahoo news fetch, rule filter, optional LLM classifier
+  llm/claude.py    Claude Agent SDK backend (kept process pool, structured output)
+  verdict/         verdict prompts; Claude or LangChain + OpenAI
   graph/           LangGraph wiring for `run`
   cli.py           python -m sda ...
 tests/             unit tests for every step (no network, no LLM)
@@ -104,4 +114,4 @@ python -m pytest tests -q
 - Fundamentals from Yahoo are a current snapshot, not point-in-time; do not backtest with them.
 - Simple DCF is harsh on capex-heavy names and is skipped for Financials.
 - Cheap P/E is not a buy; the trap flag and news verdict exist because of that.
-- Full-index fetch plus ~70 GPT verdicts takes a few minutes and uses API quota.
+- Full-index fetch plus ~70 verdicts takes a few minutes and uses your Claude plan's usage limits (or OpenAI API quota).
