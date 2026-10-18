@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sda.config import NEWS_LOOKBACK_DAYS
+from sda import config
 from sda.io_util import read_json, write_json
 from sda.news.classifier import classify_ambiguous
 from sda.news.fetch import fetch_ticker_news
@@ -24,39 +25,50 @@ def _load_screen(screen_path: str | None, run_dir: Path) -> dict[str, Any]:
 
 def analyze_news(
     screen_path: str | None = None,
-    lookback_days: int = NEWS_LOOKBACK_DAYS,
+    lookback_days: int | None = None,
     run_dir: str | None = None,
 ) -> dict[str, Any]:
-    """Fetch Yahoo news for screened names, drop noise, keep company-originated items."""
+    """Fetch Yahoo news for every shortlisted ticker (in parallel), keep stories that
+    are about the company, drop analyst/opinion noise, and write news_clean.json."""
     folder = resolve_run_dir(run_dir, hint_path=screen_path)
     screen = _load_screen(screen_path, folder)
-    by_ticker: dict[str, Any] = {}
+    rows = index_screen(screen)
+    lookback = lookback_days or config.NEWS_LOOKBACK_DAYS
 
-    for ticker, row in index_screen(screen).items():
-        raw = fetch_ticker_news(ticker, lookback_days=lookback_days)
-        raw = [item for item in raw if mentions_company(item, ticker, row.get("name"))]
-        split = filter_news(raw)
-        maybe_resolved = classify_ambiguous(split["maybe"])
-        kept = list(split["keep"])
-        dropped = list(split["drop"])
-        for item in maybe_resolved:
-            if item.get("final_label") == "keep":
-                kept.append(item)
-            else:
-                dropped.append(item)
+    def _one(ticker: str) -> tuple[str, list[dict[str, Any]]]:
+        raw = fetch_ticker_news(ticker, lookback_days=lookback)
+        name = rows[ticker].get("name")
+        return ticker, [item for item in raw if mentions_company(item, ticker, name)]
+
+    with ThreadPoolExecutor(max_workers=config.NEWS_WORKERS) as pool:
+        about_company = dict(pool.map(_one, rows))
+
+    # One classifier batch for every ticker's leftovers instead of one per ticker.
+    split = {ticker: filter_news(items) for ticker, items in about_company.items()}
+    resolved = classify_ambiguous([item for parts in split.values() for item in parts["maybe"]])
+    maybe_by_ticker: dict[str, list[dict[str, Any]]] = {}
+    for item in resolved:
+        maybe_by_ticker.setdefault(item["ticker"], []).append(item)
+
+    by_ticker: dict[str, Any] = {}
+    for ticker, row in rows.items():
+        parts = split[ticker]
+        kept = list(parts["keep"])
+        dropped = list(parts["drop"])
+        for item in maybe_by_ticker.get(ticker, []):
+            (kept if item.get("final_label") == "keep" else dropped).append(item)
         by_ticker[ticker] = {
             "buckets": row["buckets"],
             "kept": kept,
             "dropped_count": len(dropped),
-            "raw_count": len(raw),
+            "raw_count": len(about_company[ticker]),
         }
 
-    as_of = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     path = folder / "news_clean.json"
     payload = {
-        "as_of": as_of,
+        "as_of": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "screen_as_of": screen.get("as_of"),
-        "lookback_days": lookback_days,
+        "lookback_days": lookback,
         "tickers": by_ticker,
     }
     write_json(path, payload)
