@@ -5,13 +5,30 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from sda.config import OPENAI_MODEL
+from sda import config
+
+METRIC_KEYS = [
+    "price",
+    "price_as_of",
+    "sector",
+    "pe",
+    "ps",
+    "pe_vs_sector",
+    "ps_vs_sector",
+    "ni_yoy",
+    "ni_cagr_3y",
+    "value_trap",
+    "dcf_yield",
+    "dcf_fair_value",
+    "pct_1w",
+    "pct_1m",
+    "undervalued_score",
+    "overvalued_score",
+]
 
 
 class TickerVerdict(BaseModel):
-    ticker: str
-    buckets: list[str]
-    as_of: str
+    # Only the model-written text is requested; ticker/buckets/dates are attached locally.
     conclusion: str = Field(
         description="Free-form conclusion using only the provided metrics and news. "
         "If news is thin, say so. Do not invent facts or give a buy/sell as if it were advice."
@@ -33,25 +50,7 @@ def _news_block(kept: list[dict[str, Any]]) -> str:
 def _metrics_block(row: dict[str, Any] | None) -> str:
     if not row:
         return "No screen metrics attached."
-    keys = [
-        "price",
-        "price_as_of",
-        "sector",
-        "pe",
-        "ps",
-        "pe_vs_sector",
-        "ps_vs_sector",
-        "ni_yoy",
-        "ni_cagr_3y",
-        "value_trap",
-        "dcf_yield",
-        "dcf_fair_value",
-        "pct_1w",
-        "pct_1m",
-        "undervalued_score",
-        "overvalued_score",
-    ]
-    return "\n".join(f"{k}: {row.get(k)}" for k in keys)
+    return "\n".join(f"{k}: {row.get(k)}" for k in METRIC_KEYS)
 
 
 def build_verdict_chain():
@@ -74,7 +73,7 @@ def build_verdict_chain():
             ),
         ]
     )
-    model = ChatOpenAI(model=OPENAI_MODEL, temperature=0.2).with_structured_output(TickerVerdict)
+    model = ChatOpenAI(model=config.OPENAI_MODEL, temperature=0.2).with_structured_output(TickerVerdict)
     return prompt | model
 
 
@@ -85,31 +84,28 @@ def run_verdicts(
     if not os.getenv("OPENAI_API_KEY"):
         raise RuntimeError("OPENAI_API_KEY is required for the verdict step.")
 
-    chain = build_verdict_chain()
-    as_of = news_payload.get("screen_as_of") or news_payload.get("as_of")
-    batch = []
-    order = []
-    for ticker, blob in (news_payload.get("tickers") or {}).items():
-        order.append(ticker)
-        batch.append(
-            {
-                "ticker": ticker,
-                "buckets": ", ".join(blob.get("buckets") or []),
-                "as_of": as_of,
-                "metrics": _metrics_block(screen_rows.get(ticker)),
-                "news": _news_block(blob.get("kept") or []),
-            }
-        )
-    if not batch:
+    tickers: dict[str, dict[str, Any]] = news_payload.get("tickers") or {}
+    if not tickers:
         return []
-
-    results = chain.batch(batch, config={"max_concurrency": 4})
-    out = []
-    for ticker, result in zip(order, results):
-        payload = result.model_dump() if hasattr(result, "model_dump") else dict(result)
-        payload["ticker"] = ticker
-        payload["buckets"] = (news_payload["tickers"][ticker].get("buckets") or [])
-        payload["as_of"] = as_of
-        payload["kept_news_count"] = len(news_payload["tickers"][ticker].get("kept") or [])
-        out.append(payload)
-    return out
+    as_of = news_payload.get("screen_as_of") or news_payload.get("as_of")
+    batch = [
+        {
+            "ticker": ticker,
+            "buckets": ", ".join(blob.get("buckets") or []),
+            "as_of": as_of,
+            "metrics": _metrics_block(screen_rows.get(ticker)),
+            "news": _news_block(blob.get("kept") or []),
+        }
+        for ticker, blob in tickers.items()
+    ]
+    results = build_verdict_chain().batch(batch, config={"max_concurrency": config.LLM_CONCURRENCY})
+    return [
+        {
+            "ticker": ticker,
+            "buckets": blob.get("buckets") or [],
+            "as_of": as_of,
+            "kept_news_count": len(blob.get("kept") or []),
+            "conclusion": result.conclusion,
+        }
+        for (ticker, blob), result in zip(tickers.items(), results)
+    ]
