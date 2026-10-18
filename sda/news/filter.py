@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+# Opinion / stock-picking outlets: dropped whatever the headline says.
 DROP_PUBLISHERS = {
     "motley fool",
     "the motley fool",
@@ -11,6 +12,10 @@ DROP_PUBLISHERS = {
     "zacks",
     "tipranks",
     "benzinga",
+    "simply wall st",
+    "trefis",
+    "tikr",
+    "24/7 wall st",
 }
 
 DROP_PATTERNS = [

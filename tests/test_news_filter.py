@@ -30,6 +30,7 @@ def test_ambiguous_and_opinion_publishers():
         "publisher": "Motley Fool",
     }
     assert classify_rule(fool) == "drop"
+    assert classify_rule({"title": "Axon announces contract wins", "publisher": "Simply Wall St."}) == "drop"
     both ={"ticker": "X", "title": "Analysts react as X announces earnings", "publisher": "Reuters"}
     assert classify_rule(both) == "maybe"
     neither = {"ticker": "X", "title": "X shares rise", "publisher": "Reuters"}
